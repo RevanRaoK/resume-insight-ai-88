@@ -1,0 +1,47 @@
+{
+  "programming_languages": [
+    "Python", "Java", "JavaScript", "TypeScript", "C++", "C#", "C", "Go", "Rust", "Ruby", "PHP", "Swift", "Kotlin", "Scala", "R", "MATLAB", "Perl", "Lua", "Dart", "Objective-C", "Visual Basic", "Assembly", "COBOL", "Fortran", "Haskell", "Clojure", "Erlang", "Elixir", "F#", "Julia", "Groovy", "PowerShell", "Bash", "Shell", "SQL", "HTML", "CSS", "SASS", "SCSS", "Less"
+  ],
+  "frameworks_libraries": [
+    "React", "Angular", "Vue.js", "Node.js", "Express.js", "Django", "Flask", "FastAPI", "Spring", "Spring Boot", "Laravel", "Symfony", "Ruby on Rails", "ASP.NET", ".NET Core", "jQuery", "Bootstrap", "Tailwind CSS", "Material-UI", "Ant Design", "Chakra UI", "Semantic UI", "Foundation", "Bulma", "Next.js", "Nuxt.js", "Gatsby", "Svelte", "SvelteKit", "Ember.js", "Backbone.js", "Meteor", "Electron", "React Native", "Flutter", "Xamarin", "Ionic", "Cordova", "PhoneGap", "Unity", "Unreal Engine", "TensorFlow", "PyTorch", "Keras", "Scikit-learn", "Pandas", "NumPy", "Matplotlib", "Seaborn", "OpenCV", "NLTK", "spaCy", "Hugging Face", "Transformers"
+  ],
+  "databases": [
+    "MySQL", "PostgreSQL", "SQLite", "MongoDB", "Redis", "Cassandra", "DynamoDB", "Oracle", "SQL Server", "MariaDB", "CouchDB", "Neo4j", "InfluxDB", "Elasticsearch", "Solr", "Firebase", "Supabase", "PlanetScale", "Fauna", "Prisma", "Sequelize", "TypeORM", "Mongoose", "SQLAlchemy", "Hibernate", "Entity Framework"
+  ],
+  "cloud_platforms": [
+    "AWS", "Azure", "Google Cloud", "GCP", "Heroku", "Vercel", "Netlify", "DigitalOcean", "Linode", "Vultr", "IBM Cloud", "Oracle Cloud", "Alibaba Cloud", "Cloudflare", "Firebase", "Supabase", "Railway", "Render", "Fly.io", "PlanetScale", "Neon", "Upstash"
+  ],
+  "devops_tools": [
+    "Docker", "Kubernetes", "Jenkins", "GitLab CI", "GitHub Actions", "CircleCI", "Travis CI", "Ansible", "Terraform", "Vagrant", "Chef", "Puppet", "Helm", "Istio", "Prometheus", "Grafana", "ELK Stack", "Splunk", "New Relic", "Datadog", "Sentry", "Nginx", "Apache", "HAProxy", "Load Balancer", "CDN", "Cloudflare"
+  ],
+  "version_control": [
+    "Git", "GitHub", "GitLab", "Bitbucket", "SVN", "Mercurial", "Perforce", "Bazaar", "CVS", "TFS", "Azure DevOps", "SourceForge"
+  ],
+  "testing_tools": [
+    "Jest", "Mocha", "Chai", "Jasmine", "Karma", "Protractor", "Cypress", "Selenium", "WebDriver", "Puppeteer", "Playwright", "TestCafe", "JUnit", "TestNG", "Mockito", "PyTest", "unittest", "RSpec", "Capybara", "PHPUnit", "XCTest", "Espresso", "Detox", "Appium", "Postman", "Insomnia", "SoapUI"
+  ],
+  "design_tools": [
+    "Figma", "Sketch", "Adobe XD", "InVision", "Zeplin", "Marvel", "Principle", "Framer", "Adobe Photoshop", "Adobe Illustrator", "Adobe After Effects", "Adobe Premiere Pro", "Canva", "GIMP", "Inkscape", "Blender", "Maya", "3ds Max", "Cinema 4D", "SketchUp"
+  ],
+  "project_management": [
+    "Jira", "Trello", "Asana", "Monday.com", "Notion", "Confluence", "Slack", "Microsoft Teams", "Discord", "Zoom", "Google Workspace", "Office 365", "Basecamp", "Wrike", "Smartsheet", "ClickUp", "Linear", "Height", "Shortcut", "Azure Boards"
+  ],
+  "operating_systems": [
+    "Linux", "Ubuntu", "CentOS", "Red Hat", "Debian", "Fedora", "SUSE", "Arch Linux", "macOS", "Windows", "Windows Server", "FreeBSD", "OpenBSD", "Solaris", "AIX", "HP-UX"
+  ],
+  "mobile_development": [
+    "iOS", "Android", "React Native", "Flutter", "Xamarin", "Ionic", "Cordova", "PhoneGap", "Swift", "Objective-C", "Kotlin", "Java", "Dart", "Xcode", "Android Studio", "TestFlight", "Google Play Console", "App Store Connect"
+  ],
+  "data_science_ml": [
+    "Machine Learning", "Deep Learning", "Neural Networks", "Natural Language Processing", "NLP", "Computer Vision", "Data Science", "Data Analysis", "Statistics", "Probability", "Linear Algebra", "Calculus", "R", "Python", "Jupyter", "Google Colab", "Anaconda", "Pandas", "NumPy", "Matplotlib", "Seaborn", "Plotly", "Bokeh", "Scikit-learn", "TensorFlow", "PyTorch", "Keras", "OpenCV", "NLTK", "spaCy", "Hugging Face", "Transformers", "Apache Spark", "Hadoop", "Kafka", "Airflow", "MLflow", "Kubeflow", "SageMaker", "Azure ML", "Google AI Platform"
+  ],
+  "blockchain_crypto": [
+    "Blockchain", "Bitcoin", "Ethereum", "Solidity", "Smart Contracts", "Web3", "DeFi", "NFT", "Cryptocurrency", "Hyperledger", "Chaincode", "Truffle", "Ganache", "MetaMask", "Hardhat", "OpenZeppelin", "IPFS", "Polygon", "Binance Smart Chain", "Cardano", "Polkadot", "Cosmos", "Avalanche"
+  ],
+  "cybersecurity": [
+    "Cybersecurity", "Information Security", "Network Security", "Application Security", "Penetration Testing", "Ethical Hacking", "OWASP", "SSL/TLS", "Encryption", "PKI", "Firewall", "IDS", "IPS", "SIEM", "SOC", "Incident Response", "Vulnerability Assessment", "Risk Management", "Compliance", "GDPR", "HIPAA", "SOX", "PCI DSS", "ISO 27001", "NIST", "Kali Linux", "Metasploit", "Burp Suite", "Wireshark", "Nmap", "Nessus", "Qualys", "Rapid7"
+  ],
+  "soft_skills": [
+    "Leadership", "Team Management", "Project Management", "Communication", "Problem Solving", "Critical Thinking", "Analytical Skills", "Creativity", "Innovation", "Adaptability", "Flexibility", "Time Management", "Organization", "Attention to Detail", "Collaboration", "Teamwork", "Mentoring", "Coaching", "Training", "Presentation Skills", "Public Speaking", "Writing", "Documentation", "Research", "Strategic Planning", "Decision Making", "Negotiation", "Customer Service", "Client Relations", "Stakeholder Management", "Agile", "Scrum", "Kanban", "Lean", "Six Sigma", "ITIL", "PMP", "Certified Scrum Master", "Product Management", "Business Analysis", "Requirements Gathering", "User Experience", "UX", "User Interface", "UI", "Design Thinking", "Human-Computer Interaction", "HCI"
+  ]
+}

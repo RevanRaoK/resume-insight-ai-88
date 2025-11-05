@@ -1,0 +1,809 @@
+openapi: 3.0.3
+info:
+  title: SmartResume AI Resume Analyzer API
+  description: |
+    ## SmartResume AI Resume Analyzer API
+
+    Intelligent backend system that transforms raw resume documents into structured data and provides 
+    personalized career guidance through AI-powered analysis.
+
+    ### Features
+
+    * **Document Processing**: Extract text from PDF, DOCX, and TXT files with OCR fallback
+    * **Entity Extraction**: Use advanced NLP models to identify skills, experience, and qualifications
+    * **Semantic Analysis**: Calculate compatibility scores between resumes and job descriptions
+    * **AI Feedback**: Generate personalized career coaching recommendations using Google Gemini
+    * **Secure Storage**: Store analysis results with user authentication and data protection
+
+    ### Authentication
+
+    All endpoints (except health checks) require JWT authentication via Supabase Auth.
+    Include the JWT token in the Authorization header: `Bearer <token>`
+
+    ### Rate Limits
+
+    * Analysis endpoints: 10 requests per user per hour
+    * Upload endpoints: 20 requests per user per hour
+    * Other endpoints: 100 requests per user per hour
+
+    ### File Upload Limits
+
+    * Maximum file size: 10MB
+    * Supported formats: PDF, DOCX, TXT
+    * Text extraction confidence threshold: 0.80
+
+    ### Response Times
+
+    * 95% of requests complete within 30 seconds
+    * Average analysis time: 8-15 seconds
+    * File upload processing: 2-5 seconds
+  version: 1.0.0
+  contact:
+    name: SmartResume AI Support
+    email: support@smartresume-ai.com
+    url: https://smartresume-ai.com/support
+  license:
+    name: MIT License
+    url: https://opensource.org/licenses/MIT
+  termsOfService: https://smartresume-ai.com/terms
+
+servers:
+  - url: https://api.smartresume-ai.com/api/v1
+    description: Production server
+  - url: http://localhost:8000/api/v1
+    description: Development server
+
+security:
+  - BearerAuth: []
+
+paths:
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Basic health check
+      description: Provides a quick health status check for load balancers and monitoring systems
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BasicHealthResponse'
+              example:
+                status: healthy
+                timestamp: "2023-11-04T10:30:00Z"
+                service: "SmartResume AI Resume Analyzer"
+                version: "1.0.0"
+
+  /health/detailed:
+    get:
+      tags:
+        - Health
+      summary: Comprehensive health check
+      description: |
+        Performs health checks on all critical system components:
+        - Database connectivity and performance
+        - ML model availability and functionality
+        - External API connectivity (Gemini)
+      security: []
+      responses:
+        '200':
+          description: Detailed health status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailedHealthResponse'
+        '503':
+          description: Service unhealthy or degraded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailedHealthResponse'
+
+  /health/database:
+    get:
+      tags:
+        - Health
+      summary: Database health check
+      description: Database-specific connectivity and performance checks
+      security: []
+      responses:
+        '200':
+          description: Database is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatabaseHealthResponse'
+        '503':
+          description: Database is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /upload:
+    post:
+      tags:
+        - Upload
+      summary: Upload resume document
+      description: |
+        Upload and process a resume document in PDF, DOCX, or TXT format.
+        The system will extract text content and store the processed resume.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Resume file (PDF, DOCX, or TXT, max 10MB)
+              required:
+                - file
+      responses:
+        '200':
+          description: File uploaded and processed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadResponse'
+        '400':
+          description: Invalid file format or request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                unsupported_format:
+                  summary: Unsupported file format
+                  value:
+                    error_code: "UNSUPPORTED_FORMAT"
+                    message: "File format 'image/jpeg' is not supported"
+                    details:
+                      supported_formats: ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "text/plain"]
+                      detected_format: "image/jpeg"
+                    timestamp: "2023-11-04T10:30:00Z"
+                    request_id: "uuid-123"
+        '413':
+          description: File too large
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Document processing failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /resumes:
+    get:
+      tags:
+        - Upload
+      summary: Get user's uploaded resumes
+      description: Returns a list of all resumes uploaded by the authenticated user
+      parameters:
+        - name: page
+          in: query
+          description: Page number (1-based)
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: page_size
+          in: query
+          description: Items per page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 10
+      responses:
+        '200':
+          description: List of user's resumes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ResumeListItem'
+
+  /analyze:
+    post:
+      tags:
+        - Analysis
+      summary: Analyze resume against job description
+      description: |
+        Perform comprehensive resume analysis against a job description.
+        This endpoint orchestrates the complete analysis pipeline:
+        1. NLU processing for entity extraction
+        2. Semantic analysis for compatibility scoring
+        3. AI feedback generation for personalized recommendations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalysisRequest'
+      responses:
+        '200':
+          description: Analysis completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisResponse'
+        '400':
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Resume not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Processing failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                nlu_failed:
+                  summary: NLU processing failed
+                  value:
+                    error_code: "NLU_PROCESSING_FAILED"
+                    message: "Failed to extract entities from resume"
+                    details:
+                      processing_stage: "entity_extraction"
+                    timestamp: "2023-11-04T10:30:00Z"
+                    request_id: "uuid-123"
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /analyses:
+    get:
+      tags:
+        - History
+      summary: Get analysis history
+      description: Retrieve paginated list of user's past analyses
+      parameters:
+        - name: page
+          in: query
+          description: Page number (1-based)
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: page_size
+          in: query
+          description: Items per page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 10
+        - name: sort_by
+          in: query
+          description: Sort field
+          schema:
+            type: string
+            enum: [created_at, match_score]
+            default: created_at
+        - name: sort_order
+          in: query
+          description: Sort order
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: Analysis history retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisListResponse'
+
+  /analyses/{analysis_id}:
+    get:
+      tags:
+        - History
+      summary: Get specific analysis
+      description: Retrieve detailed results for a specific analysis
+      parameters:
+        - name: analysis_id
+          in: path
+          required: true
+          description: Analysis identifier
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Analysis details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisDetailResponse'
+        '404':
+          description: Analysis not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /monitoring/metrics:
+    get:
+      tags:
+        - Monitoring
+      summary: Get system metrics
+      description: Provides system performance metrics for monitoring
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: System metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricsResponse'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token from Supabase Auth
+
+  schemas:
+    BasicHealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy]
+        timestamp:
+          type: string
+          format: date-time
+        service:
+          type: string
+        version:
+          type: string
+      required:
+        - status
+        - timestamp
+        - service
+        - version
+
+    DetailedHealthResponse:
+      type: object
+      properties:
+        service:
+          type: string
+        version:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        checks:
+          type: object
+          properties:
+            database:
+              $ref: '#/components/schemas/ComponentHealth'
+            ml_models:
+              $ref: '#/components/schemas/MLModelsHealth'
+            external_apis:
+              $ref: '#/components/schemas/ComponentHealth'
+      required:
+        - service
+        - version
+        - timestamp
+        - status
+        - checks
+
+    ComponentHealth:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        timestamp:
+          type: string
+          format: date-time
+        response_time_ms:
+          type: number
+        error:
+          type: string
+      required:
+        - status
+        - timestamp
+
+    MLModelsHealth:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        models:
+          type: object
+          additionalProperties:
+            type: boolean
+        timestamp:
+          type: string
+          format: date-time
+      required:
+        - status
+        - models
+        - timestamp
+
+    DatabaseHealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        response_time_ms:
+          type: number
+        pool_info:
+          type: object
+          properties:
+            active_connections:
+              type: integer
+            idle_connections:
+              type: integer
+            total_connections:
+              type: integer
+        timestamp:
+          type: string
+          format: date-time
+      required:
+        - status
+        - timestamp
+
+    AnalysisRequest:
+      type: object
+      properties:
+        job_description:
+          type: string
+          minLength: 50
+          maxLength: 10000
+          description: Job description text to analyze against
+        job_title:
+          type: string
+          maxLength: 200
+          description: Optional job title for context
+        resume_id:
+          type: string
+          format: uuid
+          description: ID of previously uploaded resume
+        resume_text:
+          type: string
+          maxLength: 50000
+          description: Direct resume text input (alternative to resume_id)
+      required:
+        - job_description
+      example:
+        job_description: "We are looking for a Senior Python Developer with experience in FastAPI, PostgreSQL, and machine learning. The ideal candidate should have 5+ years of experience..."
+        job_title: "Senior Python Developer"
+        resume_id: "123e4567-e89b-12d3-a456-426614174000"
+
+    UploadResponse:
+      type: object
+      properties:
+        resume_id:
+          type: string
+          format: uuid
+          description: Unique identifier for the uploaded resume
+        file_name:
+          type: string
+          description: Original filename
+        file_size:
+          type: integer
+          description: File size in bytes
+        processing_method:
+          type: string
+          enum: [pdfplumber, ocr, docx, text]
+          description: Method used to extract text
+        confidence_score:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Confidence score of text extraction
+        text_length:
+          type: integer
+          description: Length of extracted text
+        uploaded_at:
+          type: string
+          format: date-time
+          description: Upload timestamp
+      required:
+        - resume_id
+        - file_name
+        - file_size
+        - processing_method
+        - confidence_score
+        - text_length
+        - uploaded_at
+      example:
+        resume_id: "123e4567-e89b-12d3-a456-426614174000"
+        file_name: "john_doe_resume.pdf"
+        file_size: 245760
+        processing_method: "pdfplumber"
+        confidence_score: 0.95
+        text_length: 2847
+        uploaded_at: "2023-11-04T10:30:00Z"
+
+    AnalysisResponse:
+      type: object
+      properties:
+        analysis_id:
+          type: string
+          format: uuid
+          description: Unique identifier for the analysis
+        match_score:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: Compatibility score (0-100)
+        ai_feedback:
+          $ref: '#/components/schemas/AIFeedback'
+        matched_keywords:
+          type: array
+          items:
+            type: string
+          description: Keywords found in both resume and job description
+        missing_keywords:
+          type: array
+          items:
+            type: string
+          description: Important keywords missing from resume
+        processing_time:
+          type: number
+          description: Analysis processing time in seconds
+        created_at:
+          type: string
+          format: date-time
+          description: Analysis timestamp
+      required:
+        - analysis_id
+        - match_score
+        - ai_feedback
+        - matched_keywords
+        - missing_keywords
+        - processing_time
+        - created_at
+
+    AIFeedback:
+      type: object
+      properties:
+        overall_assessment:
+          type: string
+          description: Overall assessment of the resume-job match
+        recommendations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Recommendation'
+        strengths:
+          type: array
+          items:
+            type: string
+          description: Identified strengths in the resume
+        priority_improvements:
+          type: array
+          items:
+            type: string
+          description: High-priority areas for improvement
+      required:
+        - overall_assessment
+        - recommendations
+        - strengths
+        - priority_improvements
+
+    Recommendation:
+      type: object
+      properties:
+        category:
+          type: string
+          enum: [skills, experience, education, formatting, keywords]
+          description: Category of the recommendation
+        priority:
+          type: string
+          enum: [high, medium, low]
+          description: Priority level of the recommendation
+        suggestion:
+          type: string
+          description: Specific improvement suggestion
+        impact:
+          type: string
+          description: Expected impact of implementing the suggestion
+      required:
+        - category
+        - priority
+        - suggestion
+        - impact
+
+    ResumeListItem:
+      type: object
+      properties:
+        resume_id:
+          type: string
+          format: uuid
+        file_name:
+          type: string
+        text_length:
+          type: integer
+        uploaded_at:
+          type: string
+          format: date-time
+      required:
+        - resume_id
+        - file_name
+        - text_length
+        - uploaded_at
+
+    AnalysisListResponse:
+      type: object
+      properties:
+        analyses:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnalysisListItem'
+        total_count:
+          type: integer
+          description: Total number of analyses for the user
+        page:
+          type: integer
+          description: Current page number
+        page_size:
+          type: integer
+          description: Number of items per page
+        has_next:
+          type: boolean
+          description: Whether there are more pages
+      required:
+        - analyses
+        - total_count
+        - page
+        - page_size
+        - has_next
+
+    AnalysisListItem:
+      type: object
+      properties:
+        analysis_id:
+          type: string
+          format: uuid
+        job_title:
+          type: string
+        match_score:
+          type: number
+          minimum: 0
+          maximum: 100
+        created_at:
+          type: string
+          format: date-time
+        processing_time:
+          type: number
+      required:
+        - analysis_id
+        - job_title
+        - match_score
+        - created_at
+        - processing_time
+
+    AnalysisDetailResponse:
+      allOf:
+        - $ref: '#/components/schemas/AnalysisResponse'
+        - type: object
+          properties:
+            job_description:
+              type: string
+              description: Original job description used for analysis
+
+    MetricsResponse:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        database:
+          type: object
+          properties:
+            status:
+              type: string
+            pool_info:
+              type: object
+              properties:
+                active_connections:
+                  type: integer
+                idle_connections:
+                  type: integer
+                total_connections:
+                  type: integer
+        ml_models:
+          type: object
+          properties:
+            loaded_models:
+              type: array
+              items:
+                type: string
+            model_health:
+              type: object
+              additionalProperties:
+                type: boolean
+            memory_usage:
+              type: object
+              additionalProperties:
+                type: number
+        service:
+          type: object
+          properties:
+            name:
+              type: string
+            version:
+              type: string
+            uptime_check:
+              type: string
+      required:
+        - timestamp
+        - database
+        - ml_models
+        - service
+
+    ErrorResponse:
+      type: object
+      properties:
+        error_code:
+          type: string
+          description: Machine-readable error code
+        message:
+          type: string
+          description: Human-readable error message
+        details:
+          type: object
+          description: Additional error context
+        timestamp:
+          type: string
+          format: date-time
+        request_id:
+          type: string
+          description: Unique request identifier for tracing
+      required:
+        - error_code
+        - message
+        - timestamp
+        - request_id
+
+tags:
+  - name: Health
+    description: System health checks and monitoring
+  - name: Upload
+    description: Resume document upload and processing
+  - name: Analysis
+    description: Resume analysis and compatibility scoring
+  - name: History
+    description: Analysis history and retrieval
+  - name: Monitoring
+    description: System metrics and performance monitoring

@@ -1,0 +1,94 @@
+# Docker Compose configuration for development environment
+# Simplified setup for local development and testing
+
+version: '3.8'
+
+services:
+  # Development application service
+  smartresume-api-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: smartresume-api-dev
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # Development settings
+      - DEBUG=true
+      - SECRET_KEY=dev-secret-key-change-in-production
+      - ALLOWED_ORIGINS=["http://localhost:3000", "http://localhost:5173"]
+      
+      # Database settings (using local or development Supabase)
+      - SUPABASE_URL=${SUPABASE_URL:-https://your-dev-project.supabase.co}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY:-your-dev-anon-key}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-your-dev-service-key}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://user:password@localhost:5432/smartresume_dev}
+      
+      # External API keys
+      - GOOGLE_GEMINI_API_KEY=${GOOGLE_GEMINI_API_KEY:-your-dev-gemini-key}
+      
+      # Development performance settings
+      - MAX_CONCURRENT_USERS=10
+      - REQUEST_TIMEOUT=60
+      
+      # Development logging
+      - LOG_LEVEL=DEBUG
+      - LOG_FORMAT=json
+    volumes:
+      # Mount source code for hot reloading
+      - .:/app
+      # Persistent storage for development
+      - ./logs:/app/logs
+      - ./temp:/app/temp
+    networks:
+      - smartresume-dev-network
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Redis for development caching
+  redis-dev:
+    image: redis:7-alpine
+    container_name: smartresume-redis-dev
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - smartresume-dev-network
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+
+  # PostgreSQL for local development (optional - use if not using Supabase)
+  postgres-dev:
+    image: postgres:15-alpine
+    container_name: smartresume-postgres-dev
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=smartresume_dev
+      - POSTGRES_USER=smartresume_user
+      - POSTGRES_PASSWORD=smartresume_password
+    volumes:
+      - postgres-dev-data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - smartresume-dev-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U smartresume_user -d smartresume_dev"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  smartresume-dev-network:
+    driver: bridge
+
+volumes:
+  postgres-dev-data:
+    driver: local
