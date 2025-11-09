@@ -1,61 +1,58 @@
-# syntax=docker/dockerfile:1.4
 # Multi-stage Docker build for SmartResume AI Backend Service
-# Ultra-optimized for Fly.io deployment with aggressive caching
+# Optimized for Fly.io deployment with fast builds
 
-# Stage 1: Builder stage with ML-optimized base
+# Stage 1: Builder stage
 FROM python:3.11-slim as builder
 
-# Set build environment variables for maximum speed
+# Set build environment variables for speed
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     DEBIAN_FRONTEND=noninteractive \
     TORCH_CUDA_ARCH_LIST="" \
-    FORCE_CUDA=0 \
-    MAX_JOBS=1
+    FORCE_CUDA=0
 
-# Install build dependencies in single layer
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update && apt-get install -y --no-install-recommends \
-    build-essential gcc g++ libffi-dev libssl-dev
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential gcc g++ libffi-dev libssl-dev \
+    && rm -rf /var/lib/apt/lists/* && apt-get clean
 
 # Create virtual environment
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Install pip tools with cache mount
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --upgrade pip setuptools wheel
+# Install pip tools
+RUN pip install --upgrade pip setuptools wheel
 
-# Copy requirements for caching
+# Copy requirements
 COPY backend/requirements.txt /tmp/requirements.txt
 
-# Create optimized requirements files for parallel installation
-RUN echo "fastapi==0.104.1\nuvicorn[standard]==0.24.0\npython-multipart==0.0.6\npydantic==2.5.0\npydantic-settings==2.1.0\nPyJWT==2.8.0\npython-jose[cryptography]==3.3.0\npython-magic==0.4.27\nasyncpg==0.29.0\nsupabase==2.3.0\npdfplumber==0.10.0\npdf2image==1.16.3\npytesseract==0.3.10\npython-docx==1.1.0\nchardet==5.2.0\ngoogle-generativeai==0.3.2\nstructlog==23.2.0\npython-json-logger==2.0.7\npytest==7.4.3\npytest-asyncio==0.21.1\nlocust==2.17.0\npsutil==5.9.6\nprotobuf==4.25.1" > /tmp/light-requirements.txt
+# Install all dependencies in optimized order
+# Light dependencies first
+RUN pip install --only-binary=all \
+    fastapi==0.104.1 uvicorn[standard]==0.24.0 python-multipart==0.0.6 \
+    pydantic==2.5.0 pydantic-settings==2.1.0 PyJWT==2.8.0 \
+    python-jose[cryptography]==3.3.0 python-magic==0.4.27 \
+    asyncpg==0.29.0 supabase==2.3.0 pdfplumber==0.10.0 \
+    pdf2image==1.16.3 pytesseract==0.3.10 python-docx==1.1.0 \
+    chardet==5.2.0 google-generativeai==0.3.2 structlog==23.2.0 \
+    python-json-logger==2.0.7 pytest==7.4.3 pytest-asyncio==0.21.1 \
+    locust==2.17.0 psutil==5.9.6 protobuf==4.25.1
 
-RUN echo "pandas==2.1.3\nscikit-learn==1.3.2\nspacy==3.7.2" > /tmp/medium-requirements.txt
+# Medium dependencies
+RUN pip install --only-binary=all \
+    pandas==2.1.3 scikit-learn==1.3.2 spacy==3.7.2
 
-RUN echo "torch==2.1.0+cpu\ntransformers==4.35.0\nsentence-transformers==2.2.2\ntensorflow-cpu==2.15.0" > /tmp/heavy-requirements.txt
+# Heavy ML dependencies with CPU optimization
+RUN pip install --only-binary=all --index-url https://download.pytorch.org/whl/cpu \
+    torch==2.1.0+cpu
 
-# Install lightweight dependencies with cache
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --only-binary=all -r /tmp/light-requirements.txt
+RUN pip install --only-binary=all \
+    transformers==4.35.0 sentence-transformers==2.2.2
 
-# Install medium dependencies with cache
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --only-binary=all -r /tmp/medium-requirements.txt
-
-# Install heavy ML dependencies with cache and CPU optimization
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --only-binary=all --index-url https://download.pytorch.org/whl/cpu torch==2.1.0+cpu
-
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --only-binary=all transformers==4.35.0 sentence-transformers==2.2.2
-
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --only-binary=all tensorflow-cpu==2.15.0
+RUN pip install --only-binary=all \
+    tensorflow-cpu==2.15.0
 
 # Stage 2: Production stage
 FROM python:3.11-slim as production
@@ -66,11 +63,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PATH="/opt/venv/bin:$PATH" \
     DEBIAN_FRONTEND=noninteractive
 
-# Install runtime dependencies with cache mount
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update && apt-get install -y --no-install-recommends \
-    poppler-utils tesseract-ocr tesseract-ocr-eng libmagic1 curl
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    poppler-utils tesseract-ocr tesseract-ocr-eng libmagic1 curl \
+    && rm -rf /var/lib/apt/lists/* && apt-get clean
 
 # Create non-root user
 RUN groupadd -r --gid 1000 appuser && \
