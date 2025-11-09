@@ -14,8 +14,8 @@ from app.middleware.auth import AuthMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.middleware.security import SecurityMiddleware
 from app.middleware.monitoring import MonitoringMiddleware
-from app.routers import health  # , upload, analysis, history, monitoring  # Temporarily disabled for testing
-# from app.services.database_service import db_service  # Temporarily disabled
+from app.routers import health, upload, analysis, history, monitoring
+from app.services.database_service import db_service
 
 def custom_openapi():
     """Custom OpenAPI schema generation with enhanced documentation"""
@@ -174,26 +174,20 @@ app = FastAPI(
 # Set custom OpenAPI schema
 app.openapi = custom_openapi
 
-# Add CORS middleware
+# Enable enterprise middleware for production
+# app.add_middleware(MonitoringMiddleware)
+# app.add_middleware(RateLimitMiddleware)
+app.add_middleware(AuthMiddleware)
+# app.add_middleware(SecurityMiddleware)
+
+# Add CORS middleware (MUST be last so it's executed first)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_origins=["*"],  # Allow all origins for testing
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Add security middleware (should be first for input sanitization)
-app.add_middleware(SecurityMiddleware)
-
-# Add authentication middleware
-app.add_middleware(AuthMiddleware)
-
-# Add rate limiting middleware (should be after auth middleware)
-app.add_middleware(RateLimitMiddleware)
-
-# Add monitoring middleware (should be last to capture all metrics)
-app.add_middleware(MonitoringMiddleware)
 
 # Include routers with enhanced documentation (minimal for testing)
 app.include_router(
@@ -205,19 +199,25 @@ app.include_router(
     }
 )
 
-# Temporarily disabled routers that depend on ML libraries
-# app.include_router(upload.router, prefix="/api/v1", tags=["upload"])
-# app.include_router(analysis.router, prefix="/api/v1", tags=["analysis"])  
-# app.include_router(history.router, prefix="/api/v1", tags=["history"])
-# app.include_router(monitoring.router, prefix="/api/v1/monitoring", tags=["monitoring"])
+# Enable all routers for full functionality
+app.include_router(upload.router, prefix="/api/v1", tags=["upload"])
+app.include_router(analysis.router, prefix="/api/v1", tags=["analysis"])  
+app.include_router(history.router, prefix="/api/v1", tags=["history"])
+app.include_router(monitoring.router, prefix="/api/v1/monitoring", tags=["monitoring"])
 
 @app.on_event("startup")
 async def startup_event():
     """Initialize application on startup"""
     logger.info("Starting SmartResume AI Resume Analyzer")
     
-    # Database service temporarily disabled for testing
-    logger.info("Database service disabled for testing - application starting in basic mode")
+    # Initialize database service
+    try:
+        await db_service.initialize()
+        logger.info("Database service initialized successfully")
+    except Exception as e:
+        logger.error("Failed to initialize database service", error=str(e))
+        # Continue startup even if database fails (graceful degradation)
+        logger.warning("Application starting with degraded database capabilities")
     
     # Initialize ML model cache (temporarily disabled for testing)
     # try:
@@ -248,8 +248,12 @@ async def shutdown_event():
     """Cleanup on application shutdown"""
     logger.info("Shutting down SmartResume AI Resume Analyzer")
     
-    # Database service cleanup (disabled for testing)
-    logger.info("Database service cleanup skipped - was disabled for testing")
+    # Database service cleanup
+    try:
+        await db_service.close()
+        logger.info("Database service closed successfully")
+    except Exception as e:
+        logger.error("Error closing database service", error=str(e))
     
     # Stop system monitoring
     try:

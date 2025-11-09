@@ -1,0 +1,143 @@
+# Fly.io Configuration Template for SmartResume AI Dual-Service Deployment
+# This template provides configuration for both backend and frontend services
+# Copy and customize this file for each service deployment
+
+# =============================================================================
+# BACKEND SERVICE CONFIGURATION
+# =============================================================================
+# To deploy backend service:
+# 1. Copy this file to fly-backend.toml
+# 2. Update app_name to your backend app name
+# 3. Set environment variables using: fly secrets set KEY=value -a your-backend-app
+# 4. Deploy with: fly deploy -c fly-backend.toml
+
+app = "smartresume-backend-[YOUR-SUFFIX]"
+primary_region = "ord"
+
+[build]
+  dockerfile = "Dockerfile.backend"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    timeout = "5s"
+    path = "/api/v1/health"
+
+[env]
+  # Production environment flag
+  DEBUG = "false"
+  LOG_LEVEL = "info"
+  
+  # IMPORTANT: Set these secrets using fly secrets set command:
+  # fly secrets set DATABASE_URL="your-supabase-connection-string" -a your-backend-app
+  # fly secrets set GOOGLE_API_KEY="your-gemini-api-key" -a your-backend-app
+  # fly secrets set JWT_SECRET="your-jwt-secret" -a your-backend-app
+  # fly secrets set SUPABASE_URL="your-supabase-url" -a your-backend-app
+  # fly secrets set SUPABASE_SERVICE_KEY="your-supabase-service-key" -a your-backend-app
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512
+
+# =============================================================================
+# FRONTEND SERVICE CONFIGURATION  
+# =============================================================================
+# To deploy frontend service:
+# 1. Copy this file to fly-frontend.toml
+# 2. Update app_name to your frontend app name
+# 3. Update VITE_API_URL to point to your deployed backend service
+# 4. Set environment variables and deploy with: fly deploy -c fly-frontend.toml
+
+# Uncomment and configure for frontend deployment:
+# app = "smartresume-frontend-[YOUR-SUFFIX]"
+# primary_region = "ord"
+
+# [build]
+#   dockerfile = "Dockerfile.frontend"
+
+# [http_service]
+#   internal_port = 80
+#   force_https = true
+#   auto_stop_machines = true
+#   auto_start_machines = true
+#   min_machines_running = 1
+#   processes = ["app"]
+
+#   [[http_service.checks]]
+#     grace_period = "10s"
+#     interval = "30s"
+#     method = "GET"
+#     timeout = "5s"
+#     path = "/"
+
+# [env]
+#   # Frontend environment variables
+#   # Update VITE_API_URL to your deployed backend service URL
+#   VITE_API_URL = "https://smartresume-backend-[YOUR-SUFFIX].fly.dev"
+#   
+#   # IMPORTANT: Set these secrets using fly secrets set command:
+#   # fly secrets set VITE_SUPABASE_URL="your-supabase-url" -a your-frontend-app
+#   # fly secrets set VITE_SUPABASE_ANON_KEY="your-supabase-anon-key" -a your-frontend-app
+
+# [[vm]]
+#   cpu_kind = "shared"
+#   cpus = 1
+#   memory_mb = 256
+
+# =============================================================================
+# DEPLOYMENT INSTRUCTIONS
+# =============================================================================
+# 
+# 1. Install Fly.io CLI: https://fly.io/docs/getting-started/installing-flyctl/
+# 
+# 2. Login to Fly.io:
+#    fly auth login
+# 
+# 3. Create and deploy backend service:
+#    cp fly.toml fly-backend.toml
+#    # Edit fly-backend.toml and update app name
+#    fly apps create smartresume-backend-[YOUR-SUFFIX]
+#    fly secrets set DATABASE_URL="your-connection-string" -a smartresume-backend-[YOUR-SUFFIX]
+#    fly secrets set GOOGLE_API_KEY="your-api-key" -a smartresume-backend-[YOUR-SUFFIX]
+#    fly secrets set JWT_SECRET="your-jwt-secret" -a smartresume-backend-[YOUR-SUFFIX]
+#    fly deploy -c fly-backend.toml
+# 
+# 4. Create and deploy frontend service:
+#    cp fly.toml fly-frontend.toml
+#    # Edit fly-frontend.toml: uncomment frontend section, update app name and API URL
+#    fly apps create smartresume-frontend-[YOUR-SUFFIX]
+#    fly secrets set VITE_SUPABASE_URL="your-supabase-url" -a smartresume-frontend-[YOUR-SUFFIX]
+#    fly secrets set VITE_SUPABASE_ANON_KEY="your-anon-key" -a smartresume-frontend-[YOUR-SUFFIX]
+#    fly deploy -c fly-frontend.toml
+# 
+# 5. Configure custom domains (optional):
+#    fly certs add your-domain.com -a smartresume-frontend-[YOUR-SUFFIX]
+#    fly certs add api.your-domain.com -a smartresume-backend-[YOUR-SUFFIX]
+#
+# =============================================================================
+# ENVIRONMENT VARIABLES REFERENCE
+# =============================================================================
+#
+# Backend Required Secrets:
+# - DATABASE_URL: Supabase PostgreSQL connection string
+# - GOOGLE_API_KEY: Google Gemini API key for AI functionality
+# - JWT_SECRET: Secret key for JWT token signing
+# - SUPABASE_URL: Supabase project URL
+# - SUPABASE_SERVICE_KEY: Supabase service role key
+#
+# Frontend Required Secrets:
+# - VITE_SUPABASE_URL: Supabase project URL (public)
+# - VITE_SUPABASE_ANON_KEY: Supabase anonymous key (public)
+# - VITE_API_URL: Backend service URL (set to deployed backend)
+#
+# =============================================================================

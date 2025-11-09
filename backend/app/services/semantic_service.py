@@ -41,12 +41,24 @@ class EmbeddingGenerator:
         return self._model
     
     def _preprocess_text(self, text: str) -> str:
-        """Preprocess text for embedding generation"""
+        """Preprocess text for embedding generation with length optimization"""
         # Remove excessive whitespace and normalize
         text = re.sub(r'\s+', ' ', text.strip())
         
         # Remove special characters that might interfere with embeddings
         text = re.sub(r'[^\w\s\-\.\,\;\:\!\?]', ' ', text)
+        
+        # PERFORMANCE OPTIMIZATION: Truncate very long texts to prevent slowdown
+        max_length = 2000  # Limit to 2000 characters for performance
+        if len(text) > max_length:
+            logger.info(f"Truncating text from {len(text)} to {max_length} characters for performance")
+            # Try to truncate at sentence boundary
+            truncated = text[:max_length]
+            last_sentence = truncated.rfind('.')
+            if last_sentence > max_length * 0.8:  # If we can find a sentence boundary in the last 20%
+                text = truncated[:last_sentence + 1]
+            else:
+                text = truncated
         
         # Normalize case for consistency
         text = text.lower()
@@ -375,8 +387,35 @@ class KeywordAnalyzer:
                 logger.info("Successfully loaded spaCy model")
             except Exception as e:
                 logger.error("Failed to load spaCy model", error=str(e))
-                raise SemanticAnalysisError(f"Failed to load NLP model: {str(e)}")
+                logger.warning("Using fallback keyword extraction without spaCy")
+                self._nlp = None  # Will trigger fallback mode
+                return None
         return self._nlp
+    
+    def _fallback_keyword_extraction(self, text: str) -> List[str]:
+        """Simple fallback keyword extraction without spaCy"""
+        import re
+        
+        # Simple regex-based keyword extraction
+        words = re.findall(r'\b[A-Za-z]{3,}\b', text.lower())
+        
+        # Common stop words to filter out
+        stop_words = {
+            'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'had', 'her', 'was', 'one', 'our', 'out', 'day', 'get', 'has', 'him', 'his', 'how', 'man', 'new', 'now', 'old', 'see', 'two', 'way', 'who', 'boy', 'did', 'its', 'let', 'put', 'say', 'she', 'too', 'use'
+        }
+        
+        # Filter and deduplicate
+        keywords = []
+        seen = set()
+        for word in words:
+            if (word not in stop_words and 
+                len(word) >= self.min_keyword_length and 
+                len(word) <= self.max_keyword_length and
+                word not in seen):
+                keywords.append(word)
+                seen.add(word)
+        
+        return keywords[:20]  # Limit to top 20 keywords
     
     def _normalize_keyword(self, keyword: str) -> str:
         """Normalize keyword for consistent matching"""
@@ -395,6 +434,10 @@ class KeywordAnalyzer:
         """Extract noun phrases from text using spaCy"""
         try:
             nlp = self._get_nlp_model()
+            if nlp is None:
+                # Fallback to simple keyword extraction
+                return self._fallback_keyword_extraction(text)
+            
             doc = nlp(text)
             
             noun_phrases = []
@@ -615,10 +658,17 @@ class SemanticService:
                        resume_length=len(resume_text),
                        job_desc_length=len(job_description))
             
-            # Generate embeddings for both texts
+            # PERFORMANCE OPTIMIZATION: Generate embeddings concurrently
             logger.info("Generating embeddings")
-            resume_embedding = await self.embedding_generator.generate_embedding(resume_text)
-            job_embedding = await self.embedding_generator.generate_embedding(job_description)
+            resume_task = asyncio.create_task(
+                self.embedding_generator.generate_embedding(resume_text)
+            )
+            job_task = asyncio.create_task(
+                self.embedding_generator.generate_embedding(job_description)
+            )
+            
+            # Wait for both embeddings to complete
+            resume_embedding, job_embedding = await asyncio.gather(resume_task, job_task)
             
             # Calculate semantic similarity
             logger.info("Calculating semantic similarity")

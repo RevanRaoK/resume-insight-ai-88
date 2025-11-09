@@ -1,7 +1,7 @@
 # Docker Compose configuration for development environment
 # Simplified setup for local development and testing
 
-version: '3.8'
+version: "3.8"
 
 services:
   # Development application service
@@ -19,20 +19,20 @@ services:
       - DEBUG=true
       - SECRET_KEY=dev-secret-key-change-in-production
       - ALLOWED_ORIGINS=["http://localhost:3000", "http://localhost:5173"]
-      
+
       # Database settings (using local or development Supabase)
       - SUPABASE_URL=${SUPABASE_URL:-https://your-dev-project.supabase.co}
       - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY:-your-dev-anon-key}
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-your-dev-service-key}
       - DATABASE_URL=${DATABASE_URL:-postgresql://user:password@localhost:5432/smartresume_dev}
-      
+
       # External API keys
       - GOOGLE_GEMINI_API_KEY=${GOOGLE_GEMINI_API_KEY:-your-dev-gemini-key}
-      
+
       # Development performance settings
       - MAX_CONCURRENT_USERS=10
       - REQUEST_TIMEOUT=60
-      
+
       # Development logging
       - LOG_LEVEL=DEBUG
       - LOG_FORMAT=json
@@ -44,7 +44,16 @@ services:
       - ./temp:/app/temp
     networks:
       - smartresume-dev-network
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    command:
+      [
+        "uvicorn",
+        "app.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--reload",
+      ]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
       interval: 30s

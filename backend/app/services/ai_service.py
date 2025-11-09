@@ -93,7 +93,7 @@ class GeminiClient:
     
     def __init__(self):
         self.api_key = settings.GOOGLE_GEMINI_API_KEY
-        self.model_name = "gemini-1.5-flash"
+        self.model_name = settings.GOOGLE_GEMINI_MODEL
         self.max_retries = 3
         self.base_delay = 1.0  # Base delay for exponential backoff
         self.max_delay = 60.0  # Maximum delay between retries
@@ -101,8 +101,19 @@ class GeminiClient:
         # Initialize circuit breaker
         self.circuit_breaker = CircuitBreaker(CircuitBreakerConfig())
         
+        # Check if API key is properly configured
+        if not self.api_key or self.api_key == "your-google-gemini-api-key":
+            logger.warning("Google Gemini API key not configured - AI feedback will be simulated")
+            self.model = None
+            return
+        
         # Configure Gemini API
-        genai.configure(api_key=self.api_key)
+        try:
+            genai.configure(api_key=self.api_key)
+        except Exception as e:
+            logger.error("Failed to configure Gemini API", error=str(e))
+            self.model = None
+            return
         
         # Initialize model with safety settings
         self.model = genai.GenerativeModel(
@@ -131,6 +142,11 @@ class GeminiClient:
             AIServiceError: If API call fails after all retries
             APIRateLimitError: If rate limit is exceeded
         """
+        # Fallback if API key is not configured
+        if self.model is None:
+            logger.info("Using simulated AI feedback - API key not configured")
+            return self._generate_simulated_feedback(prompt)
+        
         if not self.circuit_breaker.can_execute():
             raise AIServiceError(
                 message="Circuit breaker is open, API temporarily unavailable",
@@ -268,6 +284,48 @@ class GeminiClient:
                 "circuit_breaker_state": self.circuit_breaker.state.value,
                 "failure_count": self.circuit_breaker.failure_count
             }
+    
+    def _generate_simulated_feedback(self, prompt: str) -> str:
+        """Generate simulated AI feedback when API key is not configured"""
+        return """{
+            "overall_assessment": "This is a simulated analysis since the Google Gemini API key is not configured. The resume shows good potential with relevant skills and experience. Consider adding more specific keywords and quantifiable achievements to improve ATS compatibility.",
+            "strengths": [
+                "Relevant technical skills identified",
+                "Professional experience demonstrated",
+                "Clear career progression shown"
+            ],
+            "recommendations": [
+                {
+                    "category": "Skills Enhancement",
+                    "priority": "high",
+                    "suggestion": "Add more specific technical keywords that match the job description",
+                    "impact": "Improves ATS keyword matching and recruiter visibility"
+                },
+                {
+                    "category": "Experience Quantification",
+                    "priority": "high", 
+                    "suggestion": "Include specific metrics and achievements in your experience descriptions",
+                    "impact": "Demonstrates concrete value and results to employers"
+                },
+                {
+                    "category": "Format Optimization",
+                    "priority": "medium",
+                    "suggestion": "Ensure consistent formatting and use standard section headers",
+                    "impact": "Improves ATS parsing and professional appearance"
+                }
+            ],
+            "match_score_interpretation": "This is a simulated score. Configure the Google Gemini API key for accurate AI-powered analysis.",
+            "missing_keywords_analysis": {
+                "critical_missing": ["Configure API key for detailed analysis"],
+                "suggestions": "Set up Google Gemini API key in environment variables for comprehensive keyword analysis"
+            },
+            "ats_optimization_tips": [
+                "Use standard section headers (Experience, Education, Skills)",
+                "Include relevant keywords from the job description naturally in your content",
+                "Save resume in both PDF and Word formats for different ATS systems",
+                "Configure Google Gemini API key for personalized ATS optimization recommendations"
+            ]
+        }"""
 
 
 # Global Gemini client instance
@@ -849,18 +907,23 @@ class AIService:
                 matched_keywords_count=len(context.matched_keywords),
                 missing_keywords_count=len(context.missing_keywords)
             )
+            print(f"DEBUG: Starting AI feedback generation with match_score: {context.match_score}")
             
             # Build the analysis prompt
             prompt = self.prompt_engine.build_analysis_prompt(context)
             
             # Generate response from Gemini
+            print("DEBUG: About to call Gemini API...")
             try:
                 raw_response = await self.gemini_client.generate_response(prompt)
+                print(f"DEBUG: Gemini API response received, length: {len(raw_response)}")
             except (AIServiceError, APIRateLimitError) as e:
                 # Try fallback prompt if main prompt fails
+                print(f"DEBUG: Main prompt failed: {str(e)}, trying fallback...")
                 logger.warning("main_prompt_failed_trying_fallback", error=str(e))
                 fallback_prompt = self.prompt_engine.build_fallback_prompt(context)
                 raw_response = await self.gemini_client.generate_response(fallback_prompt)
+                print(f"DEBUG: Fallback response received, length: {len(raw_response)}")
             
             # Parse and validate the response
             feedback = self.response_parser.parse_response(raw_response)

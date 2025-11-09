@@ -29,8 +29,8 @@ spacy==3.7.2
 scikit-learn==1.3.2
 
 # Fix protobuf compatibility
-protobuf==3.20.3
-tensorflow==2.13.0
+protobuf==4.25.1
+tensorflow==2.15.0
 
 # External API clients
 google-generativeai==0.3.2

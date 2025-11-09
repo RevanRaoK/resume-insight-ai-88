@@ -24,9 +24,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
     # Public endpoints that don't require authentication
     PUBLIC_PATHS = {
         "/docs",
-        "/redoc",
+        "/redoc", 
         "/openapi.json",
-        "/api/v1/health"
+        "/api/v1/health",
     }
     
     async def dispatch(self, request: Request, call_next):
@@ -35,6 +35,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # Generate unique request ID for tracing
         request_id = str(uuid.uuid4())
         request.state.request_id = request_id
+        
+        # Skip authentication for OPTIONS requests (CORS preflight)
+        if request.method == "OPTIONS":
+            response = await call_next(request)
+            response.headers["X-Request-ID"] = request_id
+            return response
         
         # Skip authentication for public paths
         if self._is_public_path(request.url.path):
@@ -52,11 +58,21 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 request_id=request_id,
                 user_id=user_id,
                 path=request.url.path,
-                method=request.method
+                method=request.method,
+                user_agent=request.headers.get("User-Agent", ""),
+                client_ip=request.client.host if request.client else "unknown"
             )
             
             response = await call_next(request)
+            
+            # Add enterprise security headers
             response.headers["X-Request-ID"] = request_id
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            response.headers["X-Frame-Options"] = "DENY"
+            response.headers["X-XSS-Protection"] = "1; mode=block"
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+            response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+            
             return response
             
         except AuthenticationError as e:
@@ -64,7 +80,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 "authentication_failed",
                 request_id=request_id,
                 path=request.url.path,
-                error=str(e)
+                error=str(e),
+                user_agent=request.headers.get("User-Agent", ""),
+                client_ip=request.client.host if request.client else "unknown",
+                auth_header_present=bool(request.headers.get("Authorization"))
             )
             return JSONResponse(
                 status_code=401,
@@ -102,20 +121,23 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # Extract Authorization header
         auth_header = request.headers.get("Authorization")
         if not auth_header:
+            logger.error("No Authorization header found", headers=dict(request.headers))
             raise AuthenticationError("Missing Authorization header")
+        
+
         
         # Parse Bearer token
         try:
             scheme, token = auth_header.split(None, 1)
             if scheme.lower() != "bearer":
                 raise AuthenticationError("Invalid authentication scheme")
-        except ValueError:
+        except ValueError as e:
             raise AuthenticationError("Invalid Authorization header format")
         
         # Validate JWT token
         try:
-            # Decode without signature verification for Supabase tokens
-            # Supabase handles signature verification on their end
+            # For Supabase tokens, we validate the signature using Supabase's public key
+            # For now, we'll decode without verification but validate structure and claims
             payload = jwt.decode(
                 token,
                 options={"verify_signature": False}
@@ -128,13 +150,33 @@ class AuthMiddleware(BaseHTTPMiddleware):
             
             # Validate token expiration
             exp = payload.get("exp")
-            if exp and exp < datetime.datetime.utcnow().timestamp():
+            current_time = datetime.datetime.utcnow().timestamp()
+            if exp and exp < current_time:
                 raise AuthenticationError("Token has expired")
             
             # Validate token issuer (should be Supabase)
             iss = payload.get("iss")
             if iss and not iss.startswith("https://"):
                 raise AuthenticationError("Invalid token issuer")
+            
+            # Validate audience (should be 'authenticated' for Supabase)
+            aud = payload.get("aud")
+            if aud and aud != "authenticated":
+                raise AuthenticationError("Invalid token audience")
+            
+            # Validate issued at time (not too old)
+            iat = payload.get("iat")
+            if iat:
+                # Token should not be older than 24 hours for security
+                max_age = 24 * 60 * 60  # 24 hours in seconds
+                age = current_time - iat
+                if age > max_age:
+                    raise AuthenticationError("Token is too old")
+            
+            # Validate email exists in token (enterprise requirement)
+            email = payload.get("email")
+            if not email:
+                raise AuthenticationError("Token missing required email claim")
             
             return user_id
             

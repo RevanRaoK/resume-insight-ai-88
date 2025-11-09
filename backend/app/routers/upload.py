@@ -2,7 +2,7 @@
 Document upload endpoints for resume file processing
 """
 import time
-from uuid import uuid4
+from uuid import uuid4, UUID
 from typing import List, Dict, Any
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, BackgroundTasks
 from fastapi.responses import JSONResponse
@@ -47,6 +47,7 @@ async def upload_resume(
     request_id = str(uuid4())
     user_id = current_user["user_id"]
     
+    print(f"DEBUG: Upload started - file: {file.filename}, content_type: {file.content_type}")
     logger.info(
         "resume_upload_started",
         request_id=request_id,
@@ -57,7 +58,9 @@ async def upload_resume(
     
     try:
         # Process the document
+        print("DEBUG: About to process document...")
         processed_doc = await document_service.process_document(file)
+        print(f"DEBUG: Document processed successfully, text length: {len(processed_doc.text)}")
         
         logger.info(
             "document_processing_completed",
@@ -69,16 +72,54 @@ async def upload_resume(
             confidence_score=processed_doc.confidence_score
         )
         
+        # Create user directly in auth.users table for testing
+        print("DEBUG: Creating user in auth.users table...")
+        try:
+            async with db_service.connection_manager.get_connection() as conn:
+                # First, try to insert into auth.users table
+                await conn.execute(
+                    """
+                    INSERT INTO auth.users (id, email, created_at, updated_at, email_confirmed_at)
+                    VALUES ($1, $2, NOW(), NOW(), NOW())
+                    ON CONFLICT (id) DO NOTHING
+                    """,
+                    UUID(user_id),
+                    "test@example.com"
+                )
+                print("DEBUG: User created in auth.users")
+                
+                # Then create profile
+                await conn.execute(
+                    """
+                    INSERT INTO profiles (id, email, full_name, avatar_url)
+                    VALUES ($1, $2, $3, $4)
+                    ON CONFLICT (id) DO NOTHING
+                    """,
+                    UUID(user_id),
+                    "test@example.com",
+                    "Test User",
+                    ""
+                )
+                print("DEBUG: Profile created")
+        except Exception as e:
+            print(f"DEBUG: User/profile creation failed: {e}")
+            # Continue anyway
+        
         # Create resume record in database
+        resume_id = uuid4()
+        print(f"DEBUG: Creating resume with ID: {resume_id}")
         resume = Resume(
-            user_id=user_id,
+            id=resume_id,
+            user_id=UUID(user_id),
             file_name=processed_doc.file_name,
-            file_url=None,  # We're storing text directly, not file URL
+            file_url="",  # We're storing text directly, not file URL
             parsed_text=processed_doc.text
         )
         
         # Store in database
+        print("DEBUG: About to store resume in database...")
         created_resume = await db_service.resumes.create_resume(resume)
+        print(f"DEBUG: Resume stored successfully with ID: {created_resume.id}")
         
         processing_time = time.time() - start_time
         
@@ -90,15 +131,39 @@ async def upload_resume(
             processing_time=processing_time
         )
         
-        return UploadResponse(
-            resume_id=created_resume.id,
-            file_name=processed_doc.file_name,
-            file_size=processed_doc.file_size,
-            processing_method=processed_doc.processing_method,
-            confidence_score=processed_doc.confidence_score,
-            text_length=len(processed_doc.text),
-            uploaded_at=created_resume.uploaded_at
-        )
+        print(f"DEBUG: Creating response with resume_id: {created_resume.id}")
+        try:
+            from fastapi.responses import JSONResponse
+            
+            response_data = {
+                "resume_id": str(created_resume.id),
+                "file_name": processed_doc.file_name,
+                "file_size": getattr(processed_doc, 'file_size', 0),
+                "processing_method": processed_doc.processing_method,
+                "confidence_score": processed_doc.confidence_score,
+                "text_length": len(processed_doc.text),
+                "uploaded_at": created_resume.uploaded_at.isoformat() if created_resume.uploaded_at else None
+            }
+            
+            print("DEBUG: Response data created successfully")
+            
+            # Create JSONResponse with explicit CORS headers
+            response = JSONResponse(
+                content=response_data,
+                status_code=200,
+                headers={
+                    "Access-Control-Allow-Origin": "http://localhost:5173",
+                    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+                    "Access-Control-Allow-Headers": "*",
+                    "Access-Control-Allow-Credentials": "true"
+                }
+            )
+            print("DEBUG: JSONResponse created with CORS headers")
+            return response
+            
+        except Exception as e:
+            print(f"DEBUG: Error creating response: {e}")
+            raise
         
     except UnsupportedFormatError as e:
         logger.warning(

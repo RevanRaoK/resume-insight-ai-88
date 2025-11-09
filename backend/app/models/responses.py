@@ -25,7 +25,7 @@ class UploadResponse(BaseModel):
     uploaded_at: datetime = Field(..., description="Upload timestamp")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "resume_id": "123e4567-e89b-12d3-a456-426614174000",
                 "file_name": "john_doe_resume.pdf",
@@ -48,7 +48,7 @@ class AnalysisResponse(BaseModel):
     created_at: datetime = Field(..., description="Analysis timestamp")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "analysis_id": "456e7890-e89b-12d3-a456-426614174001",
                 "match_score": 78.5,
@@ -78,7 +78,7 @@ class AnalysisListResponse(BaseModel):
     has_next: bool = Field(..., description="Whether there are more pages")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "analyses": [
                     {

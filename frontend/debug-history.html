@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>History Page Debug Tool</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+        background-color: #f5f5f5;
+      }
+      .container {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+      .test-section {
+        margin: 20px 0;
+        padding: 15px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+      }
+      .success {
+        background-color: #d4edda;
+        border-color: #c3e6cb;
+      }
+      .error {
+        background-color: #f8d7da;
+        border-color: #f5c6cb;
+      }
+      .warning {
+        background-color: #fff3cd;
+        border-color: #ffeaa7;
+      }
+      .info {
+        background-color: #d1ecf1;
+        border-color: #bee5eb;
+      }
+      button {
+        background-color: #007bff;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 4px;
+        cursor: pointer;
+        margin: 5px;
+      }
+      button:hover {
+        background-color: #0056b3;
+      }
+      button:disabled {
+        background-color: #6c757d;
+        cursor: not-allowed;
+      }
+      pre {
+        background-color: #f8f9fa;
+        padding: 10px;
+        border-radius: 4px;
+        overflow-x: auto;
+        white-space: pre-wrap;
+      }
+      .status {
+        font-weight: bold;
+        margin: 10px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>🔍 History Page Debug Tool</h1>
+      <p>This tool helps debug the RLS policy issue with the analyses table.</p>
+
+      <div class="test-section info">
+        <h3>📋 Instructions</h3>
+        <ol>
+          <li>Make sure you're logged into your app in another tab</li>
+          <li>Click "Initialize Supabase" to set up the client</li>
+          <li>Run the tests to check RLS policy status</li>
+          <li>Apply the migration if needed</li>
+        </ol>
+      </div>
+
+      <div class="test-section">
+        <h3>🔧 Setup</h3>
+        <button onclick="initializeSupabase()">
+          Initialize Supabase Client
+        </button>
+        <div id="init-status" class="status"></div>
+      </div>
+
+      <div class="test-section">
+        <h3>🧪 Authentication Test</h3>
+        <button onclick="testAuth()" id="auth-btn" disabled>
+          Check Authentication
+        </button>
+        <div id="auth-result"></div>
+      </div>
+
+      <div class="test-section">
+        <h3>🔒 RLS Policy Test</h3>
+        <button onclick="testRLS()" id="rls-btn" disabled>
+          Test RLS Policy
+        </button>
+        <div id="rls-result"></div>
+      </div>
+
+      <div class="test-section">
+        <h3>📊 Analyses Query Test</h3>
+        <button onclick="testAnalysesQuery()" id="query-btn" disabled>
+          Test Analyses Query
+        </button>
+        <div id="query-result"></div>
+      </div>
+
+      <div class="test-section">
+        <h3>🚀 Apply Migration</h3>
+        <p>Copy this SQL and run it in your Supabase SQL Editor:</p>
+        <pre id="migration-sql">
+-- Fix Supabase Row Level Security policy for analyses table
+DROP POLICY IF EXISTS "Users can view their own analyses" ON public.analyses;
+
+CREATE POLICY "authenticated_users_select_own_analyses"
+  ON public.analyses
+  FOR SELECT
+  TO authenticated
+  USING (auth.uid() = user_id);
+
+ALTER TABLE public.analyses ENABLE ROW LEVEL SECURITY;</pre
+        >
+        <button onclick="copyMigration()">Copy Migration SQL</button>
+      </div>
+    </div>
+
+    <script type="module">
+      let supabase = null;
+
+      // Make functions global so they can be called from onclick handlers
+      window.initializeSupabase = initializeSupabase;
+      window.testAuth = testAuth;
+      window.testRLS = testRLS;
+      window.testAnalysesQuery = testAnalysesQuery;
+      window.copyMigration = copyMigration;
+
+      async function initializeSupabase() {
+        const statusDiv = document.getElementById('init-status');
+        statusDiv.innerHTML = 'Initializing...';
+
+        try {
+          // Import Supabase
+          const { createClient } = await import(
+            'https://cdn.skypack.dev/@supabase/supabase-js'
+          );
+
+          // Use the same config as your app
+          const SUPABASE_URL = 'https://deeomgotpmynipwwbkuf.supabase.co';
+          const SUPABASE_KEY =
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRlZW9tZ290cG15bmlwd3dia3VmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyNzU4MzgsImV4cCI6MjA3Nzg1MTgzOH0.F7t0gW5_z6Eit1Gt_6hEm6yadRAskhaiO6tFVzJvjes';
+
+          supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+            auth: {
+              storage: localStorage,
+              persistSession: true,
+              autoRefreshToken: true,
+            },
+          });
+
+          statusDiv.innerHTML =
+            '<span style="color: green;">✅ Supabase client initialized successfully!</span>';
+
+          // Enable other buttons
+          document.getElementById('auth-btn').disabled = false;
+          document.getElementById('rls-btn').disabled = false;
+          document.getElementById('query-btn').disabled = false;
+
+          // Store supabase globally for console access
+          window.supabase = supabase;
+          console.log('Supabase client is now available as window.supabase');
+        } catch (error) {
+          statusDiv.innerHTML = `<span style="color: red;">❌ Failed to initialize: ${error.message}</span>`;
+          console.error('Initialization error:', error);
+        }
+      }
+
+      async function testAuth() {
+        const resultDiv = document.getElementById('auth-result');
+        resultDiv.innerHTML = 'Testing authentication...';
+
+        try {
+          const {
+            data: { user },
+            error,
+          } = await supabase.auth.getUser();
+
+          if (error) {
+            resultDiv.innerHTML = `<div class="error">❌ Auth Error: ${error.message}</div>`;
+            return;
+          }
+
+          if (!user) {
+            resultDiv.innerHTML = `
+                        <div class="warning">
+                            ⚠️ No authenticated user found.<br>
+                            Please log in to your app in another tab and try again.
+                        </div>`;
+            return;
+          }
+
+          resultDiv.innerHTML = `
+                    <div class="success">
+                        ✅ User authenticated successfully!<br>
+                        <strong>User ID:</strong> ${user.id}<br>
+                        <strong>Email:</strong> ${user.email}<br>
+                        <strong>Created:</strong> ${new Date(
+                          user.created_at
+                        ).toLocaleString()}
+                    </div>`;
+        } catch (error) {
+          resultDiv.innerHTML = `<div class="error">❌ Test failed: ${error.message}</div>`;
+          console.error('Auth test error:', error);
+        }
+      }
+
+      async function testRLS() {
+        const resultDiv = document.getElementById('rls-result');
+        resultDiv.innerHTML = 'Testing RLS policy...';
+
+        try {
+          // Test unauthenticated access first
+          const { data: unauthData, error: unauthError } = await supabase
+            .from('analyses')
+            .select('id, user_id')
+            .limit(1);
+
+          let rlsStatus = '';
+
+          if (unauthError) {
+            if (
+              unauthError.code === 'PGRST116' ||
+              unauthError.message.includes('row-level security')
+            ) {
+              rlsStatus = '✅ RLS is properly blocking unauthenticated access';
+            } else {
+              rlsStatus = `⚠️ Unexpected error: ${unauthError.message}`;
+            }
+          } else if (!unauthData || unauthData.length === 0) {
+            rlsStatus =
+              '✅ RLS is working (no data returned for unauthenticated user)';
+          } else {
+            rlsStatus =
+              '❌ RLS may not be working (data returned for unauthenticated user)';
+          }
+
+          // Check if user is authenticated for further testing
+          const {
+            data: { user },
+          } = await supabase.auth.getUser();
+
+          if (user) {
+            // Test authenticated access
+            const { data: authData, error: authError } = await supabase
+              .from('analyses')
+              .select('id, user_id, job_title')
+              .limit(5);
+
+            let authStatus = '';
+            if (authError) {
+              authStatus = `❌ Authenticated access failed: ${authError.message}`;
+            } else {
+              const userAnalyses =
+                authData?.filter((a) => a.user_id === user.id) || [];
+              const otherAnalyses =
+                authData?.filter((a) => a.user_id !== user.id) || [];
+
+              authStatus = `
+                            ✅ Authenticated access successful<br>
+                            📊 Found ${authData?.length || 0} total analyses<br>
+                            👤 User's analyses: ${userAnalyses.length}<br>
+                            ${
+                              otherAnalyses.length > 0
+                                ? `❌ Other users' analyses: ${otherAnalyses.length} (SECURITY ISSUE!)`
+                                : "✅ No other users' analyses visible"
+                            }
+                        `;
+            }
+
+            resultDiv.innerHTML = `
+                        <div class="info">
+                            <strong>RLS Test Results:</strong><br>
+                            ${rlsStatus}<br><br>
+                            <strong>Authenticated Access:</strong><br>
+                            ${authStatus}
+                        </div>`;
+          } else {
+            resultDiv.innerHTML = `
+                        <div class="warning">
+                            <strong>RLS Test Results:</strong><br>
+                            ${rlsStatus}<br><br>
+                            ⚠️ Cannot test authenticated access - please log in first
+                        </div>`;
+          }
+        } catch (error) {
+          resultDiv.innerHTML = `<div class="error">❌ RLS test failed: ${error.message}</div>`;
+          console.error('RLS test error:', error);
+        }
+      }
+
+      async function testAnalysesQuery() {
+        const resultDiv = document.getElementById('query-result');
+        resultDiv.innerHTML = 'Testing analyses query...';
+
+        try {
+          const {
+            data: { user },
+          } = await supabase.auth.getUser();
+
+          if (!user) {
+            resultDiv.innerHTML =
+              '<div class="warning">⚠️ Please authenticate first</div>';
+            return;
+          }
+
+          // This is the same query the History page uses
+          const { data, error } = await supabase
+            .from('analyses')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: false });
+
+          if (error) {
+            resultDiv.innerHTML = `
+                        <div class="error">
+                            ❌ Query failed: ${error.message}<br>
+                            <strong>Error Code:</strong> ${error.code}<br>
+                            <strong>Details:</strong> ${
+                              error.details || 'None'
+                            }<br>
+                            <strong>Hint:</strong> ${error.hint || 'None'}
+                        </div>`;
+            return;
+          }
+
+          resultDiv.innerHTML = `
+                    <div class="success">
+                        ✅ Query successful!<br>
+                        <strong>Found:</strong> ${
+                          data?.length || 0
+                        } analyses<br>
+                        <strong>User ID:</strong> ${user.id}
+                    </div>
+                    <div style="margin-top: 10px;">
+                        <strong>Sample Data:</strong>
+                        <pre>${JSON.stringify(
+                          data?.slice(0, 2) || [],
+                          null,
+                          2
+                        )}</pre>
+                    </div>`;
+        } catch (error) {
+          resultDiv.innerHTML = `<div class="error">❌ Query test failed: ${error.message}</div>`;
+          console.error('Query test error:', error);
+        }
+      }
+
+      function copyMigration() {
+        const sql = document.getElementById('migration-sql').textContent;
+        navigator.clipboard
+          .writeText(sql)
+          .then(() => {
+            alert(
+              'Migration SQL copied to clipboard! Paste it in your Supabase SQL Editor.'
+            );
+          })
+          .catch((err) => {
+            console.error('Failed to copy:', err);
+            alert('Failed to copy. Please select and copy the SQL manually.');
+          });
+      }
+    </script>
+  </body>
+</html>

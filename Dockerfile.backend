@@ -1,0 +1,122 @@
+# Multi-stage Docker build for SmartResume AI Backend Service
+# Optimized for Fly.io deployment with fast build times and security
+
+# Stage 1: Builder stage
+FROM python:3.11-slim as builder
+
+# Set build environment variables for faster builds
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=0 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    DEBIAN_FRONTEND=noninteractive \
+    TORCH_CUDA_ARCH_LIST="" \
+    FORCE_CUDA=0
+
+# Install minimal build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    gcc \
+    g++ \
+    libffi-dev \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Create and activate virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Upgrade pip and install wheel for faster builds
+RUN pip install --upgrade pip setuptools wheel
+
+# Copy requirements and split installation for better caching
+COPY backend/requirements.txt /tmp/requirements.txt
+
+# Install lightweight dependencies first (better layer caching)
+RUN pip install --only-binary=all \
+    fastapi==0.104.1 \
+    uvicorn[standard]==0.24.0 \
+    python-multipart==0.0.6 \
+    pydantic==2.5.0 \
+    pydantic-settings==2.1.0 \
+    PyJWT==2.8.0 \
+    python-jose[cryptography]==3.3.0 \
+    python-magic==0.4.27 \
+    asyncpg==0.29.0 \
+    supabase==2.3.0 \
+    pdfplumber==0.10.0 \
+    pdf2image==1.16.3 \
+    pytesseract==0.3.10 \
+    python-docx==1.1.0 \
+    chardet==5.2.0 \
+    google-generativeai==0.3.2 \
+    structlog==23.2.0 \
+    python-json-logger==2.0.7 \
+    pytest==7.4.3 \
+    pytest-asyncio==0.21.1 \
+    locust==2.17.0 \
+    pandas==2.1.3 \
+    psutil==5.9.6 \
+    protobuf==4.25.1 \
+    scikit-learn==1.3.2
+
+# Install heavy ML dependencies with CPU-only optimizations
+RUN pip install --only-binary=all --index-url https://download.pytorch.org/whl/cpu \
+    torch==2.1.0+cpu \
+    && pip install --only-binary=all \
+    transformers==4.35.0 \
+    sentence-transformers==2.2.2 \
+    spacy==3.7.2
+
+# Install TensorFlow CPU-only version for faster builds
+RUN pip install --only-binary=all tensorflow-cpu==2.15.0
+
+# Stage 2: Production stage
+FROM python:3.11-slim as production
+
+# Set production environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/opt/venv/bin:$PATH" \
+    DEBIAN_FRONTEND=noninteractive
+
+# Install runtime system dependencies in single layer
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    poppler-utils \
+    tesseract-ocr \
+    tesseract-ocr-eng \
+    libmagic1 \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean \
+    && apt-get autoremove -y
+
+# Create non-root user for security hardening
+RUN groupadd -r --gid 1000 appuser && \
+    useradd -r --uid 1000 --gid appuser --shell /bin/bash --create-home appuser
+
+# Copy virtual environment from builder stage
+COPY --from=builder /opt/venv /opt/venv
+
+# Set working directory and copy app code
+WORKDIR /app
+COPY --chown=appuser:appuser backend/ .
+
+# Create directories and set permissions in single layer
+RUN mkdir -p /app/logs /app/temp /app/uploads && \
+    chown -R appuser:appuser /app && \
+    chmod -R 755 /app
+
+# Switch to non-root user
+USER appuser
+
+# Expose FastAPI port
+EXPOSE 8000
+
+# Optimized health check for faster startup
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=2 \
+    CMD curl -f http://localhost:8000/api/v1/health || exit 1
+
+# Use single worker for Fly.io optimization
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

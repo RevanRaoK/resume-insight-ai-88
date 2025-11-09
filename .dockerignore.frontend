@@ -1,0 +1,130 @@
+# Frontend Docker ignore file for optimized Fly.io deployment
+# Excludes unnecessary files to minimize build context and improve build performance
+
+# Node.js dependencies (will be installed during build)
+frontend/node_modules/
+frontend/.npm/
+frontend/.pnpm-store/
+frontend/.yarn/
+frontend/yarn.lock
+frontend/pnpm-lock.yaml
+
+# Development environment files
+frontend/.env.local
+frontend/.env.development
+frontend/.env.test
+frontend/.env.*.local
+
+# Build artifacts (will be generated during build)
+frontend/dist/
+frontend/build/
+frontend/.vite/
+frontend/.turbo/
+
+# Development and IDE files
+frontend/.vscode/
+frontend/.idea/
+frontend/*.swp
+frontend/*.swo
+frontend/*~
+
+# Testing artifacts
+frontend/coverage/
+frontend/.nyc_output/
+frontend/test-results/
+frontend/playwright-report/
+
+# Development logs
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/lerna-debug.log*
+frontend/pnpm-debug.log*
+
+# Runtime data
+frontend/pids/
+frontend/*.pid
+frontend/*.seed
+frontend/*.pid.lock
+
+# Cache directories
+frontend/.cache/
+frontend/.parcel-cache/
+frontend/.next/
+frontend/.nuxt/
+frontend/.vuepress/dist/
+
+# Temporary files
+frontend/.tmp/
+frontend/.temp/
+frontend/tmp/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Git version control
+.git/
+.gitignore
+.gitattributes
+
+# Documentation (not needed in production)
+*.md
+!README.md
+frontend/*.md
+!frontend/README.md
+
+# Other project directories not needed for frontend build
+backend/
+.kiro/
+.vscode/
+.idea/
+
+# Docker files (not needed inside container)
+Dockerfile.backend
+Dockerfile.frontend
+docker-compose*.yml
+.dockerignore*
+
+# CI/CD configuration
+.github/
+.gitlab-ci.yml
+.travis.yml
+.circleci/
+
+# Development configuration files
+frontend/.eslintrc*
+frontend/.prettierrc*
+frontend/.editorconfig
+frontend/jest.config.*
+frontend/vitest.config.*
+frontend/cypress.config.*
+frontend/playwright.config.*
+
+# Backup files
+*.bak
+*.backup
+*.orig
+
+# Lock files (package-lock.json is needed, others excluded)
+frontend/bun.lockb
+
+# Performance and debugging
+frontend/performance-monitor.js
+frontend/debug-*.js
+frontend/debug-*.html
+frontend/console-debug-script.js
+
+# Test files and debugging artifacts
+frontend/complete-history-test.html
+frontend/test-*.js
+frontend/test-*.html
+frontend/verify-*.js
+
+# Include nginx config for frontend (needed for production)
+!nginx.frontend.conf

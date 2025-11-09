@@ -17,10 +17,11 @@ class AnalysisRequest(BaseModel):
         max_length=10000,
         description="Job description text to analyze against"
     )
-    job_title: Optional[str] = Field(
-        None,
+    job_title: str = Field(
+        ...,
+        min_length=2,
         max_length=200,
-        description="Optional job title for context"
+        description="Job title/role for the position being applied to"
     )
     resume_id: Optional[UUID] = Field(
         None,
@@ -40,12 +41,15 @@ class AnalysisRequest(BaseModel):
     
     @validator('job_title')
     def validate_job_title(cls, v):
-        if v is not None:
-            return v.strip()
-        return v
+        if not v or not v.strip():
+            raise ValueError('Job title cannot be empty')
+        stripped = v.strip()
+        if len(stripped) < 2:
+            raise ValueError('Job title must be at least 2 characters long')
+        return stripped
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "job_description": "We are looking for a Senior Python Developer with experience in FastAPI, PostgreSQL, and machine learning. The ideal candidate should have 5+ years of experience...",
                 "job_title": "Senior Python Developer",

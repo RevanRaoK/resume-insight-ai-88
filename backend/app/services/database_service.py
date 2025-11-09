@@ -3,6 +3,8 @@ Database operations service with async connection management and repositories
 """
 import asyncio
 import asyncpg
+import socket
+import urllib.parse
 from typing import List, Optional, Dict, Any
 from uuid import UUID
 from datetime import datetime
@@ -30,19 +32,98 @@ class DatabaseConnectionManager:
             if self._pool is None:
                 try:
                     logger.info("Initializing database connection pool")
-                    self._pool = await asyncpg.create_pool(
-                        settings.DATABASE_URL,
-                        min_size=5,
-                        max_size=20,
-                        command_timeout=30,
-                        server_settings={
-                            'jit': 'off'  # Disable JIT for better performance with short queries
-                        }
-                    )
-                    logger.info("Database connection pool initialized successfully")
+                    logger.info(f"Attempting to connect to: {settings.DATABASE_URL.split('@')[1] if '@' in settings.DATABASE_URL else 'unknown'}")
+                    
+                    # Parse URL to handle IPv4 resolution for Supabase
+                    parsed = urllib.parse.urlparse(settings.DATABASE_URL)
+                    
+                    # For Supabase db subdomain, use direct IPv4 to avoid DNS issues
+                    if parsed.hostname == 'db.deeomgotpmynipwwbkuf.supabase.co':
+                        # Use known IPv4 addresses for this Supabase instance
+                        ipv4_addresses = ['104.18.38.10', '172.64.149.246']
+                        
+                        for ipv4_addr in ipv4_addresses:
+                            try:
+                                logger.info(f"Attempting connection to {parsed.hostname} via IPv4: {ipv4_addr}")
+                                
+                                # Create connection with IPv4 address
+                                self._pool = await asyncio.wait_for(
+                                    asyncpg.create_pool(
+                                        host=ipv4_addr,
+                                        port=parsed.port or 5432,
+                                        user=parsed.username,
+                                        password=parsed.password,
+                                        database=parsed.path.lstrip('/'),
+                                        ssl='require',
+                                        min_size=3,
+                                        max_size=10,
+                                        command_timeout=15,
+                                        server_settings={'jit': 'off'}
+                                    ),
+                                    timeout=10.0
+                                )
+                                logger.info(f"Database connection pool initialized successfully with IPv4: {ipv4_addr}")
+                                break
+                            except (asyncio.TimeoutError, Exception) as e:
+                                logger.warning(f"Failed to connect via {ipv4_addr}: {e}")
+                                if ipv4_addr == ipv4_addresses[-1]:  # Last attempt
+                                    raise
+                    else:
+                        # Standard connection for other hosts
+                        self._pool = await asyncpg.create_pool(
+                            settings.DATABASE_URL,
+                            min_size=5,
+                            max_size=20,
+                            command_timeout=30,
+                            ssl='require' if 'supabase.co' in settings.DATABASE_URL else None,
+                            server_settings={'jit': 'off'}
+                        )
+                        logger.info("Database connection pool initialized successfully")
                 except Exception as e:
                     logger.error("Failed to initialize database connection pool", error=str(e))
-                    raise DatabaseError(f"Failed to initialize database connection pool: {e}")
+                    logger.error(f"Connection URL format: {settings.DATABASE_URL[:20]}...{settings.DATABASE_URL[-20:] if len(settings.DATABASE_URL) > 40 else settings.DATABASE_URL[20:]}")
+                    
+                    # Try alternative connection methods
+                    try:
+                        logger.info("Attempting alternative connection method...")
+                        import urllib.parse
+                        parsed = urllib.parse.urlparse(settings.DATABASE_URL)
+                        
+                        # Try with explicit IPv4 preference
+                        self._pool = await asyncpg.create_pool(
+                            host=parsed.hostname,
+                            port=parsed.port or 5432,
+                            user=parsed.username,
+                            password=parsed.password,
+                            database=parsed.path.lstrip('/'),
+                            ssl='require',
+                            min_size=3,
+                            max_size=10,
+                            command_timeout=30
+                        )
+                        logger.info("Alternative connection method successful")
+                    except Exception as e2:
+                        logger.error("Alternative connection method failed", error=str(e2))
+                        
+                        # Try with pooler connection as final fallback
+                        try:
+                            logger.info("Attempting pooler connection...")
+                            pooler_url = settings.DATABASE_URL.replace(
+                                "db.deeomgotpmynipwwbkuf.supabase.co:5432",
+                                "aws-0-ap-south-1.pooler.supabase.com:6543"
+                            )
+                            
+                            self._pool = await asyncpg.create_pool(
+                                pooler_url,
+                                min_size=3,
+                                max_size=10,
+                                command_timeout=30,
+                                ssl='require'
+                            )
+                            logger.info("Pooler connection successful")
+                        except Exception as e3:
+                            logger.error("All connection methods failed", error=str(e3))
+                            raise DatabaseError(f"Failed to initialize database connection pool: {e}")
     
     async def close(self) -> None:
         """Close database connection pool"""
@@ -251,33 +332,45 @@ class AnalysisRepository:
         """Create new analysis record and return analysis ID"""
         try:
             async with self.connection_manager.get_connection() as conn:
-                analysis_id = await conn.fetchval(
-                    """
-                    INSERT INTO analyses (
-                        user_id, resume_id, job_title, job_description,
-                        match_score, ai_feedback, matched_keywords, missing_keywords
+                # Start explicit transaction to ensure data is committed
+                async with conn.transaction():
+                    analysis_id = await conn.fetchval(
+                        """
+                        INSERT INTO analyses (
+                            user_id, resume_id, job_title, job_description,
+                            match_score, ai_feedback, matched_keywords, missing_keywords
+                        )
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                        RETURNING id
+                        """,
+                        analysis_result.user_id,
+                        analysis_result.resume_id,
+                        analysis_result.job_title,
+                        analysis_result.job_description,
+                        analysis_result.match_score,
+                        analysis_result.ai_feedback,
+                        analysis_result.matched_keywords,
+                        analysis_result.missing_keywords
                     )
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                    RETURNING id
-                    """,
-                    analysis_result.user_id,
-                    analysis_result.resume_id,
-                    analysis_result.job_title,
-                    analysis_result.job_description,
-                    analysis_result.match_score,
-                    analysis_result.ai_feedback,
-                    analysis_result.matched_keywords,
-                    analysis_result.missing_keywords
-                )
-                
-                logger.info(
-                    "Analysis created",
-                    analysis_id=str(analysis_id),
-                    user_id=str(analysis_result.user_id),
-                    match_score=analysis_result.match_score,
-                    processing_time=analysis_result.processing_time
-                )
-                return str(analysis_id)
+                    
+                    # Verify the record was actually inserted
+                    verification = await conn.fetchval(
+                        "SELECT id FROM analyses WHERE id = $1",
+                        analysis_id
+                    )
+                    
+                    if not verification:
+                        raise DatabaseError("Analysis was not properly saved to database")
+                    
+                    logger.info(
+                        "Analysis created and verified",
+                        analysis_id=str(analysis_id),
+                        user_id=str(analysis_result.user_id),
+                        match_score=analysis_result.match_score,
+                        processing_time=analysis_result.processing_time
+                    )
+                    
+                    return str(analysis_id)
         except Exception as e:
             logger.error("Failed to create analysis", user_id=str(analysis_result.user_id), error=str(e))
             raise DatabaseError(f"Failed to create analysis: {e}")

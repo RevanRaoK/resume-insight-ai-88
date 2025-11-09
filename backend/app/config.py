@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     # Application settings
     DEBUG: bool = Field(default=False, env="DEBUG")
     SECRET_KEY: str = Field(..., env="SECRET_KEY")
+    JWT_SECRET_KEY: str = Field(..., env="JWT_SECRET_KEY")
     ALLOWED_ORIGINS: List[str] = Field(
         default=["http://localhost:3000"], 
         env="ALLOWED_ORIGINS"
@@ -26,6 +27,7 @@ class Settings(BaseSettings):
     
     # External API keys
     GOOGLE_GEMINI_API_KEY: str = Field(..., env="GOOGLE_GEMINI_API_KEY")
+    GOOGLE_GEMINI_MODEL: str = Field(default="gemini-2.0-flash-exp", env="GOOGLE_GEMINI_MODEL")
     
     # File upload settings
     MAX_FILE_SIZE: int = Field(default=10 * 1024 * 1024, env="MAX_FILE_SIZE")  # 10MB

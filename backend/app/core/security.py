@@ -3,11 +3,18 @@ Security utilities for input sanitization and validation
 """
 import re
 import html
-import magic
 import tempfile
 import os
 from typing import Optional, List, Dict, Any
 from pathlib import Path
+
+# Try to import magic, fall back to mimetypes if not available
+try:
+    import magic
+    MAGIC_AVAILABLE = True
+except ImportError:
+    import mimetypes
+    MAGIC_AVAILABLE = False
 
 from app.utils.logger import get_logger
 from app.config import settings
@@ -135,7 +142,14 @@ class FileValidator:
     """Security validation for file uploads"""
     
     def __init__(self):
-        self.magic = magic.Magic(mime=True)
+        if MAGIC_AVAILABLE:
+            try:
+                self.magic = magic.Magic(mime=True)
+                self.use_magic = True
+            except Exception:
+                self.use_magic = False
+        else:
+            self.use_magic = False
     
     def validate_file_security(
         self, 
@@ -169,8 +183,15 @@ class FileValidator:
         if file_size == 0:
             raise ValidationError("File is empty")
         
-        # Detect actual MIME type using python-magic
-        detected_mime = self.magic.from_buffer(file_content)
+        # Detect actual MIME type
+        if self.use_magic:
+            try:
+                detected_mime = self.magic.from_buffer(file_content)
+            except Exception:
+                # Fallback to filename-based detection
+                detected_mime = self._detect_mime_from_filename(filename)
+        else:
+            detected_mime = self._detect_mime_from_filename(filename)
         
         # Validate MIME type
         if detected_mime not in allowed_types:
@@ -243,6 +264,23 @@ class FileValidator:
         
         file_ext = Path(filename).suffix.lower()
         return file_ext in suspicious_extensions
+    
+    def _detect_mime_from_filename(self, filename: str) -> str:
+        """Fallback MIME type detection based on filename extension"""
+        mime_type, _ = mimetypes.guess_type(filename)
+        
+        # Map common extensions to expected MIME types
+        if mime_type is None:
+            ext = Path(filename).suffix.lower()
+            extension_map = {
+                '.pdf': 'application/pdf',
+                '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                '.txt': 'text/plain',
+                '.doc': 'application/msword'
+            }
+            mime_type = extension_map.get(ext, 'application/octet-stream')
+        
+        return mime_type
 
 
 class TemporaryFileManager:

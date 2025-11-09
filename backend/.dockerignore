@@ -1,6 +1,7 @@
-# Docker ignore file for SmartResume AI Resume Analyzer
+# Backend Docker ignore file for optimized Fly.io deployment
+# Excludes unnecessary files to minimize build context and improve build performance
 
-# Python
+# Python bytecode and cache
 __pycache__/
 *.py[cod]
 *$py.class
@@ -23,19 +24,22 @@ wheels/
 *.egg
 MANIFEST
 
-# Virtual environments
+# Virtual environments (will be created during build)
 venv/
 env/
 ENV/
+.venv/
 
-# IDE
+# IDE and editor files
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+.vim/
+.emacs.d/
 
-# OS
+# OS generated files
 .DS_Store
 .DS_Store?
 ._*
@@ -44,11 +48,12 @@ ENV/
 ehthumbs.db
 Thumbs.db
 
-# Git
+# Git version control
 .git/
 .gitignore
+.gitattributes
 
-# Testing
+# Testing artifacts
 .pytest_cache/
 .coverage
 htmlcov/
@@ -58,42 +63,75 @@ nosetests.xml
 coverage.xml
 *.cover
 .hypothesis/
+.mypy_cache/
 
-# Logs
+# Development logs
 *.log
 logs/
+*.log.*
 
-# Environment files
+# Environment configuration files (use Fly.io secrets instead)
 .env
 .env.local
 .env.development
 .env.test
 .env.production
 
-# Temporary files
+# Temporary and upload directories
 temp/
 tmp/
 uploads/
+.tmp/
 
-# Documentation
+# Documentation (not needed in production)
 docs/
 *.md
 !README.md
 
-# Docker
+# Docker files (not needed inside container)
 Dockerfile*
 docker-compose*
-.dockerignore
+.dockerignore*
 
-# CI/CD
+# CI/CD configuration
 .github/
 .gitlab-ci.yml
 .travis.yml
+.circleci/
+.jenkins/
+
+# Development and testing tools
+.pre-commit-config.yaml
+.flake8
+.pylintrc
+pyproject.toml
+setup.cfg
 
 # Performance test results
 tests/performance/results/
 
-# ML model cache (will be downloaded at runtime)
+# ML model cache (models downloaded at runtime)
 models/
 *.pkl
 *.joblib
+*.model
+
+# Backup files
+*.bak
+*.backup
+*.orig
+
+# Node.js (if any mixed dependencies)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+
+# Database files (use external database)
+*.db
+*.sqlite
+*.sqlite3
+
+# Monitoring and profiling
+.coverage.*
+profile_*
+*.prof
