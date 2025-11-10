@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "lib": ["deno.window", "deno.ns"],
+    "strict": false,
+    "noImplicitAny": false
+  },
+  "imports": {
+    "std/": "https://deno.land/std@0.168.0/",
+    "supabase": "https://esm.sh/@supabase/supabase-js@2.39.3"
+  }
+}

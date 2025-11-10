@@ -1,12 +1,31 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+// This is a Deno/Supabase Edge Function - ignore Node.js TypeScript errors
+// @ts-nocheck
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
+
+// Type declarations for Deno environment
+declare global {
+  const Deno: {
+    env: {
+      get(key: string): string | undefined;
+    };
+  };
+}
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers':
+    'authorization, x-client-info, apikey, content-type',
 };
 
-serve(async (req) => {
+interface AnalysisResult {
+  matchScore: number;
+  feedback: string[];
+  matchedKeywords: string[];
+  missingKeywords: string[];
+}
+
+serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -22,13 +41,16 @@ serve(async (req) => {
       }
     );
 
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
-    
+    const {
+      data: { user },
+      error: userError,
+    } = await supabaseClient.auth.getUser();
+
     if (userError || !user) {
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     const { fileName, fileUrl, jobDescription } = await req.json();
@@ -39,28 +61,39 @@ serve(async (req) => {
     const resumeText = `Resume file: ${fileName}`;
 
     // Extract job title from job description
-    const jobTitleMatch = jobDescription.match(/(?:for|as|position:|role:)\s*([A-Za-z\s]+?)(?:\s+at|\s+\||\n|$)/i);
-    const jobTitle = jobTitleMatch ? jobTitleMatch[1].trim() : 'Unspecified Position';
+    const jobTitleMatch = jobDescription.match(
+      /(?:for|as|position:|role:)\s*([A-Za-z\s]+?)(?:\s+at|\s+\||\n|$)/i
+    );
+    const jobTitle = jobTitleMatch
+      ? jobTitleMatch[1].trim()
+      : 'Unspecified Position';
 
-    // Call Lovable AI for analysis
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    
-    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          {
-            role: 'system',
-            content: `You are a professional resume analyzer. Analyze the resume against the job description and provide:
+    // Call Google Gemini AI for analysis
+    const GOOGLE_API_KEY = Deno.env.get('GOOGLE_API_KEY');
+
+    const aiResponse = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${GOOGLE_API_KEY}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: `You are a professional resume analyzer. Analyze the resume against the job description and provide:
 1. A match score (0-100)
 2. Exactly 3 actionable feedback items
 3. Matched keywords (skills/technologies mentioned in both)
 4. Missing keywords (important requirements from job description not in resume)
+
+Job Description:
+${jobDescription}
+
+Resume:
+${resumeText}
 
 Return your response in this exact JSON format:
 {
@@ -72,57 +105,66 @@ Return your response in this exact JSON format:
   ],
   "matchedKeywords": ["Python", "React", "FastAPI", "SQL", "JavaScript", "Agile"],
   "missingKeywords": ["Docker", "Kubernetes", "CI/CD", "AWS", "Terraform"]
-}`
-          },
-          {
-            role: 'user',
-            content: `Job Description:\n${jobDescription}\n\nResume:\n${resumeText}\n\nAnalyze this resume against the job description.`
-          }
-        ],
-        temperature: 0.7,
-      }),
-    });
+}`,
+                },
+              ],
+            },
+          ],
+          temperature: 0.7,
+        }),
+      }
+    );
 
     if (!aiResponse.ok) {
       const errorText = await aiResponse.text();
       console.error('AI API error:', aiResponse.status, errorText);
-      
+
       if (aiResponse.status === 429) {
         return new Response(
-          JSON.stringify({ error: 'Rate limit exceeded. Please try again later.' }),
-          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          JSON.stringify({
+            error: 'Rate limit exceeded. Please try again later.',
+          }),
+          {
+            status: 429,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          }
         );
       }
-      
+
       if (aiResponse.status === 402) {
         return new Response(
-          JSON.stringify({ error: 'AI usage limit reached. Please add credits to continue.' }),
-          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          JSON.stringify({
+            error: 'AI usage limit reached. Please add credits to continue.',
+          }),
+          {
+            status: 402,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          }
         );
       }
-      
+
       throw new Error(`AI API error: ${errorText}`);
     }
 
     const aiData = await aiResponse.json();
     const aiContent = aiData.choices[0].message.content;
-    
+
     // Parse AI response
-    let analysisResult;
+    let analysisResult: AnalysisResult;
     try {
-      analysisResult = JSON.parse(aiContent);
+      analysisResult = JSON.parse(aiContent) as AnalysisResult;
     } catch (parseError) {
       console.error('Failed to parse AI response:', aiContent);
       // Fallback to default analysis
       analysisResult = {
         matchScore: 70,
         feedback: [
-          "Resume received and processed successfully.",
-          "Consider adding quantifiable achievements to strengthen your profile.",
-          "Tailor your skills section to match job requirements."
+          'Resume received and processed successfully.',
+          'Consider adding quantifiable achievements to strengthen your profile.',
+          'Tailor your skills section to match job requirements.',
         ],
-        matchedKeywords: ["Experience", "Skills", "Education"],
-        missingKeywords: ["Specific technical skills", "Certifications"]
+        matchedKeywords: ['Experience', 'Skills', 'Education'],
+        missingKeywords: ['Specific technical skills', 'Certifications'],
       };
     }
 
@@ -133,7 +175,7 @@ Return your response in this exact JSON format:
         user_id: user.id,
         file_name: fileName,
         file_url: fileUrl,
-        parsed_text: resumeText
+        parsed_text: resumeText,
       })
       .select()
       .single();
@@ -154,7 +196,7 @@ Return your response in this exact JSON format:
         match_score: analysisResult.matchScore,
         ai_feedback: analysisResult.feedback,
         matched_keywords: analysisResult.matchedKeywords,
-        missing_keywords: analysisResult.missingKeywords
+        missing_keywords: analysisResult.missingKeywords,
       })
       .select()
       .single();
@@ -167,23 +209,22 @@ Return your response in this exact JSON format:
     console.log('Analysis completed successfully:', analysisData.id);
 
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         analysisId: analysisData.id,
-        message: 'Analysis completed successfully'
+        message: 'Analysis completed successfully',
       }),
-      { 
+      {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200 
+        status: 200,
       }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error in analyze-resume function:', error);
-    return new Response(
-      JSON.stringify({ error: error.message || 'Internal server error' }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500 
-      }
-    );
+    const errorMessage =
+      error instanceof Error ? error.message : 'Internal server error';
+    return new Response(JSON.stringify({ error: errorMessage }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 500,
+    });
   }
 });

@@ -7,7 +7,7 @@ import uvicorn
 
 from app.config import settings
 from app.utils.logger import setup_logging, get_logger
-# from app.utils.ml_utils import model_cache  # Temporarily disabled for testing
+from app.utils.ml_utils import model_cache  # Re-enabled for full functionality
 from app.utils.system_monitor import system_monitor
 from app.utils.async_utils import background_processor
 from app.middleware.auth import AuthMiddleware
@@ -219,15 +219,14 @@ async def startup_event():
         # Continue startup even if database fails (graceful degradation)
         logger.warning("Application starting with degraded database capabilities")
     
-    # Initialize ML model cache (temporarily disabled for testing)
-    # try:
-    #     await model_cache.load_models_at_startup()
-    #     logger.info("ML model cache initialized successfully")
-    # except Exception as e:
-    #     logger.error("Failed to initialize ML model cache", error=str(e))
-    #     # Continue startup even if models fail to load (graceful degradation)
-    #     logger.warning("Application starting with degraded ML capabilities")
-    logger.info("ML model cache disabled for testing - application starting in basic mode")
+    # Initialize ML model cache
+    try:
+        await model_cache.load_models_at_startup()
+        logger.info("ML model cache initialized successfully")
+    except Exception as e:
+        logger.error("Failed to initialize ML model cache", error=str(e))
+        # Continue startup even if models fail to load (graceful degradation)
+        logger.warning("Application starting with degraded ML capabilities")
     
     # Start system resource monitoring
     try:
