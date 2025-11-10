@@ -1,7 +1,26 @@
-# Optimized Full-Feature Dockerfile for Fly.io (under 8GB limit)
-# Uses advanced optimization techniques to include all ML features
+# Optimized Full-Stack Dockerfile for Fly.io (Frontend + Backend + ML)
+# Multi-stage build with all features under 8GB limit
 
-FROM python:3.11-slim AS base
+# Stage 1: Frontend Builder
+FROM node:20-alpine AS frontend-builder
+
+WORKDIR /app/frontend
+
+# Install build dependencies
+RUN apk add --no-cache python3 make g++
+
+# Copy frontend package files
+COPY frontend/package*.json ./
+
+# Install frontend dependencies
+RUN npm ci --ignore-scripts
+
+# Copy frontend source and build
+COPY frontend/ ./
+RUN npm run build
+
+# Stage 2: Backend with ML - Optimized Production
+FROM python:3.11-slim AS production
 
 # Set build environment variables for optimization
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -14,17 +33,24 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     TRANSFORMERS_CACHE=/tmp/transformers_cache \
     HF_HOME=/tmp/hf_cache
 
-# Install system dependencies (minimal set)
+# Install system dependencies (Python + Node.js for serving)
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Python runtime dependencies
     curl \
     poppler-utils \
     tesseract-ocr \
     tesseract-ocr-eng \
     libmagic1 \
     build-essential \
+    # Node.js for serving frontend
+    nodejs \
+    npm \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean \
     && apt-get autoremove -y
+
+# Install serve for frontend hosting
+RUN npm install -g serve
 
 # Create non-root user
 RUN groupadd -r --gid 1000 appuser && \
@@ -81,22 +107,36 @@ RUN pip install --upgrade pip setuptools wheel && \
     find /usr/local/lib/python3.11/site-packages -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
 
 # Copy backend application
-COPY --chown=appuser:appuser backend/ ./
+COPY --chown=appuser:appuser backend/ ./backend/
+
+# Copy built frontend from frontend-builder stage
+COPY --from=frontend-builder /app/frontend/dist ./frontend/dist/
 
 # Create directories with proper permissions
 RUN mkdir -p /app/logs /app/temp /app/uploads && \
     chown -R appuser:appuser /app && \
     chmod -R 755 /app
 
+# Create startup script for both frontend and backend
+COPY --chown=appuser:appuser <<EOF /app/start.sh
+#!/bin/bash
+# Start frontend server in background
+serve -s /app/frontend/dist -l 3000 &
+# Start backend server
+cd /app/backend && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
+EOF
+
+RUN chmod +x /app/start.sh
+
 # Switch to non-root user
 USER appuser
 
-# Expose port
-EXPOSE 8000
+# Expose ports (backend on 8000, frontend on 3000)
+EXPOSE 8000 3000
 
-# Health check
+# Health check for backend
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD curl -f http://localhost:8000/api/v1/health || exit 1
 
-# Start backend server
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+# Start both services
+CMD ["/app/start.sh"]
