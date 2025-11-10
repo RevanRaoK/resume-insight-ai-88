@@ -1,0 +1,135 @@
+# Multi-stage Docker build for SmartResume AI Full-Stack Application
+# Combines both frontend and backend in a single container
+
+# Stage 1: Frontend Builder
+FROM node:20-alpine AS frontend-builder
+
+WORKDIR /app/frontend
+
+# Install build dependencies
+RUN apk add --no-cache python3 make g++
+
+# Copy frontend package files
+COPY frontend/package*.json ./
+
+# Install frontend dependencies
+RUN npm ci --ignore-scripts
+
+# Copy frontend source and build
+COPY frontend/ ./
+RUN npm run build
+
+# Stage 2: Backend Builder
+FROM python:3.11-slim AS backend-builder
+
+# Set build environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    DEBIAN_FRONTEND=noninteractive \
+    TORCH_CUDA_ARCH_LIST="" \
+    FORCE_CUDA=0
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential gcc g++ libffi-dev libssl-dev \
+    && rm -rf /var/lib/apt/lists/* && apt-get clean
+
+# Create virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Install pip tools
+RUN pip install --upgrade pip setuptools wheel
+
+# Copy and install Python dependencies
+COPY backend/requirements.txt /tmp/requirements.txt
+
+# Install lightweight dependencies first
+RUN pip install --only-binary=all \
+    fastapi==0.104.1 uvicorn[standard]==0.24.0 python-multipart==0.0.6 \
+    pydantic==2.5.0 pydantic-settings==2.1.0 PyJWT==2.8.0 \
+    python-jose[cryptography]==3.3.0 python-magic==0.4.27 \
+    asyncpg==0.29.0 supabase==2.3.0 pdfplumber==0.10.0 \
+    pdf2image==1.16.3 pytesseract==0.3.10 python-docx==1.1.0 \
+    chardet==5.2.0 google-generativeai==0.3.2 structlog==23.2.0 \
+    python-json-logger==2.0.7 pytest==7.4.3 pytest-asyncio==0.21.1 \
+    locust==2.17.0 psutil==5.9.6 protobuf==4.25.1
+
+# Install medium dependencies
+RUN pip install --only-binary=all \
+    pandas==2.1.3 scikit-learn==1.3.2 spacy==3.7.2
+
+# Install heavy ML dependencies with CPU optimization
+RUN pip install --only-binary=all --index-url https://download.pytorch.org/whl/cpu \
+    torch==2.1.0+cpu
+
+RUN pip install --only-binary=all \
+    transformers==4.35.0 sentence-transformers==2.2.2
+
+RUN pip install --only-binary=all \
+    tensorflow-cpu==2.15.0
+
+# Stage 3: Production - Combined Frontend + Backend
+FROM python:3.11-slim AS production
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/opt/venv/bin:$PATH" \
+    DEBIAN_FRONTEND=noninteractive
+
+# Install runtime dependencies (Python + Node.js for serving)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Python runtime dependencies
+    poppler-utils tesseract-ocr tesseract-ocr-eng libmagic1 curl \
+    # Node.js for serving frontend
+    nodejs npm \
+    && rm -rf /var/lib/apt/lists/* && apt-get clean
+
+# Install serve for frontend hosting
+RUN npm install -g serve
+
+# Create non-root user
+RUN groupadd -r --gid 1000 appuser && \
+    useradd -r --uid 1000 --gid appuser --shell /bin/bash --create-home appuser
+
+# Copy Python virtual environment
+COPY --from=backend-builder /opt/venv /opt/venv
+
+# Copy backend application
+WORKDIR /app
+COPY --chown=appuser:appuser backend/ ./backend/
+
+# Copy built frontend
+COPY --from=frontend-builder /app/frontend/dist ./frontend/dist/
+
+# Create directories with proper permissions
+RUN mkdir -p /app/logs /app/temp /app/uploads && \
+    chown -R appuser:appuser /app && \
+    chmod -R 755 /app
+
+# Create startup script
+COPY --chown=appuser:appuser <<EOF /app/start.sh
+#!/bin/bash
+# Start frontend server in background
+serve -s /app/frontend/dist -l 3000 &
+# Start backend server
+cd /app/backend && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
+EOF
+
+RUN chmod +x /app/start.sh
+
+# Switch to non-root user
+USER appuser
+
+# Expose ports (backend on 8000, frontend on 3000)
+EXPOSE 8000 3000
+
+# Health check for backend
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=2 \
+    CMD curl -f http://localhost:8000/api/v1/health || exit 1
+
+# Start both services
+CMD ["/app/start.sh"]

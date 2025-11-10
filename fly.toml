@@ -2,7 +2,6 @@ app = "resume-insight-ai-88"
 primary_region = "iad"
 
 [build]
-  dockerfile = "Dockerfile.backend"
 
 [http_service]
   internal_port = 8000
