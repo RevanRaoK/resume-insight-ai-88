@@ -1,0 +1,37 @@
+# FastAPI and web framework dependencies
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# Authentication and security
+PyJWT==2.8.0
+python-jose[cryptography]==3.3.0
+python-magic==0.4.27
+
+# Database and async support
+asyncpg==0.29.0
+supabase==2.3.0
+
+# Document processing (lightweight)
+pdfplumber==0.10.0
+pdf2image==1.16.3
+pytesseract==0.3.10
+python-docx==1.1.0
+chardet==5.2.0
+
+# External API clients
+google-generativeai==0.3.2
+
+# Utilities and monitoring
+structlog==23.2.0
+python-json-logger==2.0.7
+psutil==5.9.6
+
+# Basic data processing (lightweight)
+pandas==2.1.3
+
+# Testing dependencies (minimal)
+pytest==7.4.3
+pytest-asyncio==0.21.1
